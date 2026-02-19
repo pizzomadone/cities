@@ -213,62 +213,124 @@ def distance_from_equator(lat):
     return round(abs(lat) * 111.32)
 
 
+def _fmt_time(h):
+    hh = int(h)
+    mm = int(round((h - hh) * 60))
+    if mm >= 60:
+        hh = (hh + 1) % 24
+        mm = 0
+    return f'{hh:02d}:{mm:02d}'
+
+
+def _fmt_duration(hours):
+    h = int(hours)
+    m = int(round((hours - h) * 60))
+    if m >= 60:
+        h += 1
+        m = 0
+    return f'{h}h {m:02d}m'
+
+
+def _sun_calc(lat, lon, N):
+    """
+    Core del calcolo alba/tramonto dato il giorno dell'anno N (1–365).
+    Restituisce (rise_h, set_h, day_length_hours) oppure
+    ('midnight_sun', …) o ('polar_night', …) come stringa speciale nel primo valore.
+    """
+    decl = 23.45 * math.sin(math.radians(360 / 365 * (N - 81)))
+    cos_H_num = (math.cos(math.radians(90.833)) -
+                 math.sin(math.radians(lat)) * math.sin(math.radians(decl)))
+    cos_H_den = (math.cos(math.radians(lat)) * math.cos(math.radians(decl)))
+    if cos_H_den == 0:
+        return 'na', None, None
+    cos_H = cos_H_num / cos_H_den
+    if cos_H < -1:
+        return 'midnight_sun', None, None
+    if cos_H > 1:
+        return 'polar_night', None, None
+    H = math.degrees(math.acos(cos_H))
+    B = math.radians(360 / 365 * (N - 81))
+    EoT = 9.87 * math.sin(2 * B) - 7.53 * math.cos(B) - 1.5 * math.sin(B)
+    solar_noon = 12 - lon / 15 - EoT / 60
+    H_hours = H / 15
+    return (solar_noon - H_hours) % 24, (solar_noon + H_hours) % 24, 2 * H_hours
+
+
 def sunrise_sunset(lat, lon):
     """
-    Calcola alba e tramonto approssimati (UTC) per oggi usando algoritmo NOAA semplificato.
+    Calcola alba e tramonto approssimati (UTC) per oggi.
     Restituisce (sunrise_str, sunset_str, day_length_str, date_str).
-    Casi speciali: 'Midnight Sun' o 'Polar Night'.
     """
     today = datetime.utcnow()
     N = today.timetuple().tm_yday
     date_str = today.strftime('%B %d, %Y')
-
-    # Declinazione solare
-    decl = 23.45 * math.sin(math.radians(360 / 365 * (N - 81)))
-
-    # Angolo orario al sorgere/tramonto (zenith = 90.833° per rifrazione)
-    cos_H_num = (math.cos(math.radians(90.833)) -
-                 math.sin(math.radians(lat)) * math.sin(math.radians(decl)))
-    cos_H_den = (math.cos(math.radians(lat)) * math.cos(math.radians(decl)))
-
-    if cos_H_den == 0:
-        return 'N/A', 'N/A', 'N/A', date_str
-
-    cos_H = cos_H_num / cos_H_den
-
-    if cos_H < -1:
+    rise, sset, length = _sun_calc(lat, lon, N)
+    if rise == 'midnight_sun':
         return 'Midnight Sun', 'Midnight Sun', '24h 00m', date_str
-    if cos_H > 1:
+    if rise == 'polar_night':
         return 'Polar Night', 'Polar Night', '0h 00m', date_str
+    if rise == 'na':
+        return 'N/A', 'N/A', 'N/A', date_str
+    return _fmt_time(rise) + ' UTC', _fmt_time(sset) + ' UTC', _fmt_duration(length), date_str
 
-    H = math.degrees(math.acos(cos_H))  # gradi
 
-    # Equazione del tempo (minuti)
-    B = math.radians(360 / 365 * (N - 81))
-    EoT = 9.87 * math.sin(2 * B) - 7.53 * math.cos(B) - 1.5 * math.sin(B)
+def sunrise_sunset_for_date(lat, lon, year, month, day):
+    """
+    Calcola alba e tramonto per una data specifica.
+    Restituisce (sunrise_str, sunset_str, day_length_str) senza ' UTC' suffix.
+    """
+    from datetime import date as _date
+    N = _date(year, month, day).timetuple().tm_yday
+    rise, sset, length = _sun_calc(lat, lon, N)
+    if rise == 'midnight_sun':
+        return '☀️ all day', '—', '24h 00m'
+    if rise == 'polar_night':
+        return '—', '🌑 all day', '0h 00m'
+    if rise == 'na':
+        return 'N/A', 'N/A', 'N/A'
+    return _fmt_time(rise), _fmt_time(sset), _fmt_duration(length)
 
-    # Mezzogiorno solare in UTC
-    solar_noon = 12 - lon / 15 - EoT / 60
-    H_hours = H / 15
 
-    rise_h = (solar_noon - H_hours) % 24
-    set_h  = (solar_noon + H_hours) % 24
-    day_length = 2 * H_hours
+def build_sun_calendar(lat, lon):
+    """
+    Costruisce il calendario alba/tramonto per 3 mesi: precedente, corrente, successivo.
+    Restituisce una lista di 3 dict con chiavi: year, month, month_name, days.
+    Ogni giorno: {day, dow, date_iso, sunrise, sunset, day_length, is_today}.
+    """
+    import calendar as _cal
+    from datetime import date as _date
 
-    def fmt_time(h):
-        hh = int(h)
-        mm = int(round((h - hh) * 60))
-        if mm >= 60:
-            hh = (hh + 1) % 24
-            mm = 0
-        return f'{hh:02d}:{mm:02d} UTC'
+    today = datetime.utcnow().date()
+    result = []
 
-    def fmt_duration(hours):
-        h = int(hours)
-        m = int(round((hours - h) * 60))
-        if m >= 60:
-            h += 1
-            m = 0
-        return f'{h}h {m:02d}m'
-
-    return fmt_time(rise_h), fmt_time(set_h), fmt_duration(day_length), date_str
+    for delta in (-1, 0, 1):
+        m = today.month + delta
+        y = today.year
+        if m < 1:
+            m += 12
+            y -= 1
+        elif m > 12:
+            m -= 12
+            y += 1
+        _, days_in_month = _cal.monthrange(y, m)
+        month_name = _date(y, m, 1).strftime('%B')
+        days = []
+        for d in range(1, days_in_month + 1):
+            date_obj = _date(y, m, d)
+            rise, sset, length = sunrise_sunset_for_date(lat, lon, y, m, d)
+            days.append({
+                'day':        d,
+                'dow':        date_obj.strftime('%a'),
+                'date_iso':   date_obj.isoformat(),
+                'sunrise':    rise,
+                'sunset':     sset,
+                'day_length': length,
+                'is_today':   date_obj == today,
+            })
+        result.append({
+            'year':       y,
+            'month':      m,
+            'month_name': month_name,
+            'days':       days,
+        })
+    return result

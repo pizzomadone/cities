@@ -131,6 +131,27 @@ def region(cslug, rslug):
                                 f'GPS coordinates, maps and nearby cities for each location.')
 
 
+# ── Ricerca ───────────────────────────────────────────────────────
+
+@app.route('/search')
+def search():
+    q = request.query.get('q', '').strip()
+    results = db.search_cities(q) if len(q) >= 2 else []
+    if q:
+        title = f'Search results for "{q}" – WorldCities'
+        desc  = (f'Found {len(results)} cities matching "{q}". '
+                 f'GPS coordinates and maps for each location.')
+    else:
+        title = 'Search Cities – WorldCities'
+        desc  = 'Search the WorldCities directory for any city worldwide.'
+    return template('search',
+                    q=q,
+                    results=results,
+                    base_url=BASE_URL,
+                    title=title,
+                    description=desc)
+
+
 # ── Città ─────────────────────────────────────────────────────────
 
 @app.route('/country/<cslug>/<rslug>/<cityslug>/')
@@ -145,6 +166,7 @@ def city(cslug, rslug, cityslug):
 
     nearby = []
     lat_dms = lon_dms = None
+    sun_calendar = []
 
     # ── Dati geo estesi ────────────────────────────────────────────
     geo = {
@@ -181,6 +203,8 @@ def city(cslug, rslug, cityslug):
         geo['sunrise'], geo['sunset'], geo['day_length'], geo['sun_date'] = \
             utils.sunrise_sunset(lat, lon)
 
+        sun_calendar = utils.build_sun_calendar(lat, lon)
+
         nearby_raw = db.get_nearby_cities(lat, lon, city_row['cityid'])
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
@@ -202,6 +226,7 @@ def city(cslug, rslug, cityslug):
                     lat_dms=lat_dms,
                     lon_dms=lon_dms,
                     geo=geo,
+                    sun_calendar=sun_calendar,
                     region_city_count=region_city_count,
                     country_city_count=country_city_count,
                     base_url=BASE_URL,

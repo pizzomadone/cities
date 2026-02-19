@@ -216,6 +216,45 @@
     </table>
   </section>
 
+  <!-- ── Monthly Sun Calendar ────────────────────────────────── -->
+  % if sun_calendar:
+  <section class="info-box sun-calendar" id="sun-calendar">
+    <h2>Monthly Sunrise and Sunset Calendar for {{city['cityname']}}, {{city['countryname']}}</h2>
+    <p class="section-intro">
+      Daily sunrise and sunset times (UTC) for <strong>{{city['cityname']}}</strong>
+      across the previous, current, and next month.
+      Use these tables to look up any specific date.
+    </p>
+    % for mo in sun_calendar:
+    <h3>{{mo['month_name']}} {{mo['year']}} – Sunrise &amp; Sunset in {{city['cityname']}}</h3>
+    <div class="sun-table-wrap">
+      <table class="sun-table">
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>Date</th>
+            <th>Sunrise (UTC)</th>
+            <th>Sunset (UTC)</th>
+            <th>Daylight</th>
+          </tr>
+        </thead>
+        <tbody>
+          % for d in mo['days']:
+          <tr{{!' class="today-row"' if d['is_today'] else ''}}>
+            <td class="dow">{{d['dow']}}</td>
+            <td class="date-col">{{d['day']}} {{mo['month_name'][:3]}} {{mo['year']}}</td>
+            <td class="sun-rise">{{d['sunrise']}}</td>
+            <td class="sun-set">{{d['sunset']}}</td>
+            <td class="day-len">{{d['day_length']}}</td>
+          </tr>
+          % end
+        </tbody>
+      </table>
+    </div>
+    % end
+  </section>
+  % end
+
   <!-- ── Geographic Position ──────────────────────────────────── -->
   <section class="info-box" id="geographic-position">
     <h2>Geographic Position of {{city['cityname']}}</h2>

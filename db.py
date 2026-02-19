@@ -193,3 +193,17 @@ def get_country_city_count(country_slug):
             "SELECT COUNT(*) FROM cities WHERE slug_country = ? AND cityname != ''",
             (country_slug,)
         ).fetchone()[0]
+
+
+def search_cities(query, limit=30):
+    """Ricerca città per nome (parziale, case-insensitive)."""
+    with get_conn() as conn:
+        return conn.execute('''
+            SELECT cityname, stateprovince, countryname, countrycode,
+                   slug_city, slug_country, slug_region
+            FROM   cities
+            WHERE  cityname LIKE ? AND cityname != ''
+              AND  slug_city != '' AND slug_country != '' AND slug_region != ''
+            ORDER  BY cityname
+            LIMIT  ?
+        ''', (f'%{query}%', limit)).fetchall()
