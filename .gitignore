@@ -1,0 +1,36 @@
+# Database (troppo grande per git — copia manualmente)
+*.db
+*.sqlite
+*.sqlite3
+
+# CSV sorgente
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Sitemap generate (opzionale, se vuoi pre-generarle)
+sitemap/generated/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env vars
+.env
