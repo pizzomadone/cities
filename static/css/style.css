@@ -176,9 +176,35 @@ h2 { font-size: 1.2rem; margin: 1.5rem 0 .6rem; color: var(--clr-text); }
 }
 .site-footer p + p { margin-top: .25rem; }
 
+/* ── City detail – new elements ─────────────────────────────── */
+.city-flag {
+  font-size: 1.5rem;
+  vertical-align: middle;
+  margin-right: .25rem;
+}
+.city-country-label {
+  font-size: 1.1rem;
+  color: var(--clr-muted);
+  font-weight: 400;
+}
+.section-intro {
+  font-size: .92rem;
+  color: var(--clr-text);
+  margin-bottom: .75rem;
+  line-height: 1.65;
+}
+.flag-cell { font-size: .95rem; }
+.flag-emoji { font-size: 1.3rem; margin-right: .35rem; }
+.coords-table td.dms { color: var(--clr-muted); font-size: .82rem; }
+.antipode-osm {
+  margin-top: .75rem;
+  font-size: .88rem;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   h1 { font-size: 1.4rem; }
   #map { height: 260px; }
+  .city-country-label { display: block; font-size: .95rem; }
 }

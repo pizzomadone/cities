@@ -175,3 +175,21 @@ def get_city_count():
         return conn.execute(
             "SELECT COUNT(*) FROM cities WHERE cityname != ''"
         ).fetchone()[0]
+
+
+def get_region_city_count(country_slug, region_slug):
+    """Numero di città in una regione specifica."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM cities WHERE slug_country = ? AND slug_region = ? AND cityname != ''",
+            (country_slug, region_slug)
+        ).fetchone()[0]
+
+
+def get_country_city_count(country_slug):
+    """Numero totale di città in un paese."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM cities WHERE slug_country = ? AND cityname != ''",
+            (country_slug,)
+        ).fetchone()[0]
