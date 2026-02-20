@@ -131,6 +131,27 @@ def region(cslug, rslug):
                                 f'GPS coordinates, maps and nearby cities for each location.')
 
 
+# ── Ricerca ───────────────────────────────────────────────────────
+
+@app.route('/search')
+def search():
+    q = request.query.get('q', '').strip()
+    results = db.search_cities(q) if len(q) >= 2 else []
+    if q:
+        title = f'Search results for "{q}" – WorldCities'
+        desc  = (f'Found {len(results)} cities matching "{q}". '
+                 f'GPS coordinates and maps for each location.')
+    else:
+        title = 'Search Cities – WorldCities'
+        desc  = 'Search the WorldCities directory for any city worldwide.'
+    return template('search',
+                    q=q,
+                    results=results,
+                    base_url=BASE_URL,
+                    title=title,
+                    description=desc)
+
+
 # ── Città ─────────────────────────────────────────────────────────
 
 @app.route('/country/<cslug>/<rslug>/<cityslug>/')
@@ -139,40 +160,82 @@ def city(cslug, rslug, cityslug):
     if not city_row:
         abort(404)
 
+    lat = city_row['latitude']
+    lon = city_row['longitude']
+    has_coords = bool(lat and lon)
+
     nearby = []
     lat_dms = lon_dms = None
-    if city_row['latitude'] and city_row['longitude']:
-        lat_dms, lon_dms = utils.format_coords(city_row['latitude'], city_row['longitude'])
-        nearby_raw = db.get_nearby_cities(
-            city_row['latitude'],
-            city_row['longitude'],
-            city_row['cityid']
-        )
-        # Calcola distanza reale Haversine per ciascuna città vicina
-        nearby = []
+    sun_calendar = []
+
+    # ── Dati geo estesi ────────────────────────────────────────────
+    geo = {
+        'flag':         utils.country_flag(city_row['countrycode']),
+        'tld':          utils.get_tld(city_row['countrycode']),
+        'phone_prefix': utils.get_phone_prefix(city_row['countrycode']),
+        'tz_offset':    None,
+        'tz_label':     None,
+        'hemisphere_ns': None,
+        'hemisphere_ew': None,
+        'equator_km':   None,
+        'anti_lat':     None,
+        'anti_lon':     None,
+        'anti_lat_dms': None,
+        'anti_lon_dms': None,
+        'sunrise':      None,
+        'sunset':       None,
+        'day_length':   None,
+        'sun_date':     None,
+    }
+
+    if has_coords:
+        lat_dms, lon_dms = utils.format_coords(lat, lon)
+
+        geo['tz_offset'], geo['tz_label'] = utils.approx_timezone(lon)
+        geo['hemisphere_ns'], geo['hemisphere_ew'] = utils.get_hemisphere(lat, lon)
+        geo['equator_km'] = utils.distance_from_equator(lat)
+
+        anti_lat, anti_lon = utils.antipode(lat, lon)
+        geo['anti_lat'] = anti_lat
+        geo['anti_lon'] = anti_lon
+        geo['anti_lat_dms'], geo['anti_lon_dms'] = utils.format_coords(anti_lat, anti_lon)
+
+        geo['sunrise'], geo['sunset'], geo['day_length'], geo['sun_date'] = \
+            utils.sunrise_sunset(lat, lon)
+
+        sun_calendar = utils.build_sun_calendar(lat, lon)
+
+        nearby_raw = db.get_nearby_cities(lat, lon, city_row['cityid'])
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
-                dist = utils.haversine(
-                    city_row['latitude'], city_row['longitude'],
-                    n['latitude'], n['longitude']
-                )
+                dist = utils.haversine(lat, lon, n['latitude'], n['longitude'])
                 nearby.append(dict(n) | {'distance_km': dist})
+
+    # ── Statistiche regionali ──────────────────────────────────────
+    region_city_count  = db.get_region_city_count(cslug, rslug)
+    country_city_count = db.get_country_city_count(cslug)
 
     city_name    = city_row['cityname']
     region_name  = city_row['stateprovince']
     country_name = city_row['countryname']
+    code         = city_row['countrycode']
 
     return template('city',
                     city=city_row,
                     nearby=nearby,
                     lat_dms=lat_dms,
                     lon_dms=lon_dms,
+                    geo=geo,
+                    sun_calendar=sun_calendar,
+                    region_city_count=region_city_count,
+                    country_city_count=country_city_count,
                     base_url=BASE_URL,
                     title=f'{city_name}, {region_name}, {country_name} – '
-                          f'Coordinates, Map & Nearby Cities',
-                    description=f'{city_name} is a city in {region_name}, {country_name}. '
-                                f'Latitude {city_row["latitude"]}, longitude {city_row["longitude"]}. '
-                                f'Find map, GPS coordinates and nearby cities.')
+                          f'GPS Coordinates, Map, Time Zone & Nearby Cities',
+                    description=f'{city_name} is a city in {region_name}, {country_name} ({code}). '
+                                f'GPS coordinates: latitude {lat}, longitude {lon}. '
+                                f'Discover the time zone, sunrise & sunset times, antipode, '
+                                f'hemisphere, and nearby cities.')
 
 
 # ── Avvio ─────────────────────────────────────────────────────────
