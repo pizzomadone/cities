@@ -167,6 +167,11 @@ def city(cslug, rslug, cityslug):
     nearby = []
     lat_dms = lon_dms = None
     sun_calendar = []
+    moon = None
+    golden = None
+    season = None
+    ann_daylight = []
+    country_info = utils.get_country_info(city_row['countrycode'])
 
     # ── Dati geo estesi ────────────────────────────────────────────
     geo = {
@@ -205,6 +210,11 @@ def city(cslug, rslug, cityslug):
 
         sun_calendar = utils.build_sun_calendar(lat, lon)
 
+        moon        = utils.moon_phase()
+        golden      = utils.golden_hour(lat, lon)
+        season      = utils.current_season(lat)
+        ann_daylight = utils.annual_daylight(lat, lon)
+
         nearby_raw = db.get_nearby_cities(lat, lon, city_row['cityid'])
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
@@ -227,6 +237,11 @@ def city(cslug, rslug, cityslug):
                     lon_dms=lon_dms,
                     geo=geo,
                     sun_calendar=sun_calendar,
+                    moon=moon,
+                    golden=golden,
+                    season=season,
+                    ann_daylight=ann_daylight,
+                    country_info=country_info,
                     region_city_count=region_city_count,
                     country_city_count=country_city_count,
                     base_url=BASE_URL,

@@ -159,6 +159,27 @@
           <a href="/country/{{city['slug_country']}}/{{city['slug_region']}}/">{{city['stateprovince']}}</a>
         </td>
       </tr>
+      % if country_info:
+      <tr>
+        <th>Capital City</th>
+        <td colspan="2">{{country_info['capital']}}</td>
+      </tr>
+      <tr>
+        <th>Official Language</th>
+        <td colspan="2">{{country_info['language']}}</td>
+      </tr>
+      <tr>
+        <th>Currency</th>
+        <td colspan="2">
+          {{country_info['currency_name']}}
+          ({{country_info['currency_code']}}
+          % if country_info['currency_symbol'] != country_info['currency_code']:
+          &nbsp;·&nbsp;<span class="currency-symbol">{{country_info['currency_symbol']}}</span>
+          % end
+          )
+        </td>
+      </tr>
+      % end
     </table>
   </section>
 
@@ -183,6 +204,37 @@
       </tr>
     </table>
   </section>
+
+  <!-- ── Current Season ──────────────────────────────────────── -->
+  % if season:
+  <section class="info-box" id="current-season">
+    <h2>Current Season in {{city['cityname']}}</h2>
+    <p class="section-intro">
+      Based on its position in the <strong>{{season['hemisphere']}}</strong>,
+      <strong>{{city['cityname']}}</strong> is currently in
+      <strong>{{season['name']}}</strong> {{season['emoji']}}.
+      Meteorological {{season['name'].lower()}} in the {{season['hemisphere']}} runs from
+      <strong>{{season['months']}}</strong>.
+    </p>
+    <table class="coords-table">
+      <tr>
+        <th>Current Season</th>
+        <td colspan="2" class="season-cell">
+          <span class="season-emoji">{{season['emoji']}}</span>
+          <strong>{{season['name']}}</strong>
+        </td>
+      </tr>
+      <tr>
+        <th>Hemisphere</th>
+        <td colspan="2">{{season['hemisphere']}}</td>
+      </tr>
+      <tr>
+        <th>Season Months</th>
+        <td colspan="2">{{season['months']}}</td>
+      </tr>
+    </table>
+  </section>
+  % end
 
   <!-- ── Sunrise & Sunset ─────────────────────────────────────── -->
   <section class="info-box" id="sun-times">
@@ -216,6 +268,47 @@
     </table>
   </section>
 
+  <!-- ── Golden Hour & Blue Hour ─────────────────────────────── -->
+  % if golden:
+  <section class="info-box" id="golden-hour">
+    <h2>Golden Hour &amp; Blue Hour in {{city['cityname']}} Today</h2>
+    <p class="section-intro">
+      The <strong>golden hour</strong> is the period just after sunrise and just before sunset when
+      sunlight is soft and warm – ideal for photography. The <strong>blue hour</strong> occurs when
+      the sun is slightly below the horizon, bathing the sky in a deep blue tone.
+      All times are in UTC.
+    </p>
+    <table class="coords-table golden-table">
+      <thead>
+        <tr><th colspan="3">Morning</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>🌑 Blue Hour</th>
+          <td colspan="2">{{golden['blue_morning_start']}} – {{golden['blue_morning_end']}}</td>
+        </tr>
+        <tr>
+          <th>🌅 Golden Hour</th>
+          <td colspan="2">{{golden['golden_morning_start']}} – {{golden['golden_morning_end']}}</td>
+        </tr>
+      </tbody>
+      <thead>
+        <tr><th colspan="3">Evening</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>🌇 Golden Hour</th>
+          <td colspan="2">{{golden['golden_evening_start']}} – {{golden['golden_evening_end']}}</td>
+        </tr>
+        <tr>
+          <th>🌃 Blue Hour</th>
+          <td colspan="2">{{golden['blue_evening_start']}} – {{golden['blue_evening_end']}}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+  % end
+
   <!-- ── Monthly Sun Calendar ────────────────────────────────── -->
   % if sun_calendar:
   <section class="info-box sun-calendar" id="sun-calendar">
@@ -236,6 +329,7 @@
             <th>Sunrise (UTC)</th>
             <th>Sunset (UTC)</th>
             <th>Daylight</th>
+            <th title="Moon phase">Moon</th>
           </tr>
         </thead>
         <tbody>
@@ -246,12 +340,84 @@
             <td class="sun-rise">{{d['sunrise']}}</td>
             <td class="sun-set">{{d['sunset']}}</td>
             <td class="day-len">{{d['day_length']}}</td>
+            <td class="moon-col" title="Moon phase">{{d['moon']}}</td>
           </tr>
           % end
         </tbody>
       </table>
     </div>
     % end
+  </section>
+  % end
+
+  <!-- ── Annual Daylight Table ────────────────────────────────── -->
+  % if ann_daylight:
+  <section class="info-box" id="annual-daylight">
+    <h2>Daylight Hours by Month in {{city['cityname']}}</h2>
+    <p class="section-intro">
+      Typical sunrise, sunset, and total daylight for <strong>{{city['cityname']}}</strong>
+      throughout the year, calculated for the 15th of each month.
+      Times are in UTC.
+    </p>
+    <div class="sun-table-wrap">
+      <table class="sun-table annual-table">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Sunrise (UTC)</th>
+            <th>Sunset (UTC)</th>
+            <th>Daylight</th>
+          </tr>
+        </thead>
+        <tbody>
+          % for m in ann_daylight:
+          <tr>
+            <td class="month-col"><strong>{{m['month_name']}}</strong></td>
+            <td class="sun-rise">{{m['sunrise']}}</td>
+            <td class="sun-set">{{m['sunset']}}</td>
+            <td class="day-len">{{m['day_length']}}</td>
+          </tr>
+          % end
+        </tbody>
+      </table>
+    </div>
+  </section>
+  % end
+
+  <!-- ── Moon Phase ───────────────────────────────────────────── -->
+  % if moon:
+  <section class="info-box" id="moon-phase">
+    <h2>Moon Phase Today in {{city['cityname']}}</h2>
+    <p class="section-intro">
+      Today the moon is in its <strong>{{moon['name']}}</strong> phase {{moon['emoji']}},
+      with approximately <strong>{{moon['illumination']}}%</strong> of its surface illuminated.
+      The moon is <strong>{{moon['age']}} days</strong> into the current lunar cycle.
+    </p>
+    <table class="coords-table">
+      <tr>
+        <th>Phase</th>
+        <td colspan="2" class="moon-phase-cell">
+          <span class="moon-emoji">{{moon['emoji']}}</span>
+          <strong>{{moon['name']}}</strong>
+        </td>
+      </tr>
+      <tr>
+        <th>Illumination</th>
+        <td colspan="2">{{moon['illumination']}}%</td>
+      </tr>
+      <tr>
+        <th>Moon Age</th>
+        <td colspan="2">{{moon['age']}} days into lunar cycle</td>
+      </tr>
+      <tr>
+        <th>Days to Full Moon</th>
+        <td colspan="2">{{moon['days_to_full']}} days</td>
+      </tr>
+      <tr>
+        <th>Days to New Moon</th>
+        <td colspan="2">{{moon['days_to_new']}} days</td>
+      </tr>
+    </table>
   </section>
   % end
 

@@ -308,6 +308,39 @@ h2 { font-size: 1.2rem; margin: 1.5rem 0 .6rem; color: var(--clr-text); }
   font-size: .88rem;
 }
 
+/* ── Country info extras ─────────────────────────────────────── */
+.currency-symbol {
+  font-weight: 700;
+  font-size: 1.05em;
+  color: var(--clr-accent);
+}
+
+/* ── Current Season ──────────────────────────────────────────── */
+.season-cell { font-size: .95rem; }
+.season-emoji { font-size: 1.4rem; margin-right: .35rem; vertical-align: middle; }
+
+/* ── Moon Phase ──────────────────────────────────────────────── */
+.moon-phase-cell { font-size: .95rem; }
+.moon-emoji { font-size: 1.6rem; margin-right: .35rem; vertical-align: middle; }
+.moon-col { text-align: center; font-size: 1.1rem; }
+
+/* ── Golden Hour table ───────────────────────────────────────── */
+.golden-table thead tr th {
+  background: linear-gradient(135deg, var(--clr-accent), #e8a020);
+  color: #fff;
+  font-size: .8rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: .45rem .75rem;
+}
+.golden-table thead:last-of-type tr th {
+  background: linear-gradient(135deg, #2a3a6b, var(--clr-accent));
+}
+
+/* ── Annual Daylight ─────────────────────────────────────────── */
+.annual-table .month-col { font-size: .9rem; color: var(--clr-text); }
+.annual-table tbody tr:hover { background: var(--clr-bg-alt); }
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
