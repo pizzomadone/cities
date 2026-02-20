@@ -466,14 +466,28 @@ def annual_daylight(lat, lon):
     year = datetime.utcnow().year
     result = []
     for m in range(1, 13):
-        rise, sset, length = sunrise_sunset_for_date(lat, lon, year, m, 15)
+        from datetime import date as _date
+        N = _date(year, m, 15).timetuple().tm_yday
+        rise, sset, length = _sun_calc(lat, lon, N)
+        if rise == 'midnight_sun':
+            rise_fmt, sset_fmt, length_fmt, dl_h = '☀️ all day', '—', '24h 00m', 24.0
+        elif rise == 'polar_night':
+            rise_fmt, sset_fmt, length_fmt, dl_h = '—', '🌑 all day', '0h 00m', 0.0
+        elif rise == 'na':
+            rise_fmt, sset_fmt, length_fmt, dl_h = 'N/A', 'N/A', 'N/A', 0.0
+        else:
+            rise_fmt = _fmt_time(rise)
+            sset_fmt = _fmt_time(sset)
+            length_fmt = _fmt_duration(length)
+            dl_h = round(length, 2)
         result.append({
             'month': m,
             'month_name': datetime(year, m, 15).strftime('%B'),
             'month_short': datetime(year, m, 15).strftime('%b'),
-            'sunrise': rise,
-            'sunset': sset,
-            'day_length': length,
+            'sunrise': rise_fmt,
+            'sunset': sset_fmt,
+            'day_length': length_fmt,
+            'day_length_h': dl_h,
         })
     return result
 
@@ -682,6 +696,49 @@ COUNTRY_DATA = {
     'ZW': {'capital': 'Harare',             'language': 'English, Shona, Ndebele',  'currency_code': 'ZWL', 'currency_name': 'Zimbabwean dollar',             'currency_symbol': 'Z$'},
     'XK': {'capital': 'Pristina',           'language': 'Albanian, Serbian',        'currency_code': 'EUR', 'currency_name': 'Euro',                          'currency_symbol': '€'},
 }
+
+
+def build_moon_calendar():
+    """Restituisce 3 mesi (prev, curr, next) di fasi lunari per ogni giorno."""
+    import calendar as _cal
+    from datetime import date as _date
+    SYNODIC = 29.53058867
+    REF = datetime(2000, 1, 6, 18, 14)
+    today = datetime.utcnow().date()
+    result = []
+    PHASE_NAMES = [
+        (1.85, 'New Moon'), (7.38, 'Waxing Crescent'), (9.22, 'First Quarter'),
+        (14.77, 'Waxing Gibbous'), (16.61, 'Full Moon'), (22.15, 'Waning Gibbous'),
+        (23.99, 'Last Quarter'), (29.53, 'Waning Crescent'),
+    ]
+    for delta in (-1, 0, 1):
+        m = today.month + delta
+        y = today.year
+        if m < 1:   m += 12; y -= 1
+        elif m > 12: m -= 12; y += 1
+        _, days_in_month = _cal.monthrange(y, m)
+        days = []
+        for d in range(1, days_in_month + 1):
+            dt = datetime(y, m, d, 12, 0)
+            age = (dt - REF).total_seconds() / 86400 % SYNODIC
+            illumination = round((1 - math.cos(math.radians(age / SYNODIC * 360))) / 2 * 100)
+            emoji = _moon_emoji_for_date(y, m, d)
+            name = next(n for limit, n in PHASE_NAMES if age < limit)
+            days.append({
+                'day': d,
+                'dow': _date(y, m, d).strftime('%a'),
+                'date_iso': _date(y, m, d).isoformat(),
+                'emoji': emoji,
+                'name': name,
+                'illumination': illumination,
+                'is_today': _date(y, m, d) == today,
+            })
+        result.append({
+            'year': y, 'month': m,
+            'month_name': _date(y, m, 1).strftime('%B'),
+            'days': days,
+        })
+    return result
 
 
 def get_country_info(country_code):
