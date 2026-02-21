@@ -159,6 +159,27 @@
           <a href="/country/{{city['slug_country']}}/{{city['slug_region']}}/">{{city['stateprovince']}}</a>
         </td>
       </tr>
+      % if country_info:
+      <tr>
+        <th>Capital City</th>
+        <td colspan="2">{{country_info['capital']}}</td>
+      </tr>
+      <tr>
+        <th>Official Language</th>
+        <td colspan="2">{{country_info['language']}}</td>
+      </tr>
+      <tr>
+        <th>Currency</th>
+        <td colspan="2">
+          {{country_info['currency_name']}}
+          ({{country_info['currency_code']}}
+          % if country_info['currency_symbol'] != country_info['currency_code']:
+          &nbsp;·&nbsp;<span class="currency-symbol">{{country_info['currency_symbol']}}</span>
+          % end
+          )
+        </td>
+      </tr>
+      % end
     </table>
   </section>
 
@@ -184,76 +205,64 @@
     </table>
   </section>
 
-  <!-- ── Sunrise & Sunset ─────────────────────────────────────── -->
-  <section class="info-box" id="sun-times">
-    <h2>Sunrise and Sunset in {{city['cityname']}} Today</h2>
-    <p class="section-intro">
-      On <strong>{{geo['sun_date']}}</strong>, the approximate
-      <strong>sunrise in {{city['cityname']}}</strong> is at
-      <strong>{{geo['sunrise']}}</strong> and the
-      <strong>sunset in {{city['cityname']}}</strong> is at
-      <strong>{{geo['sunset']}}</strong>.
-      The total daylight duration is approximately <strong>{{geo['day_length']}}</strong>.
-      All times are in Coordinated Universal Time (UTC).
-    </p>
-    <table class="coords-table">
-      <tr>
-        <th>Date</th>
-        <td colspan="2">{{geo['sun_date']}}</td>
-      </tr>
-      <tr>
-        <th>Sunrise (UTC)</th>
-        <td colspan="2">{{geo['sunrise']}}</td>
-      </tr>
-      <tr>
-        <th>Sunset (UTC)</th>
-        <td colspan="2">{{geo['sunset']}}</td>
-      </tr>
-      <tr>
-        <th>Day Length</th>
-        <td colspan="2">{{geo['day_length']}}</td>
-      </tr>
-    </table>
-  </section>
+  <!-- ── Explore ─────────────────────────────────────────────── -->
+  % if has_coords:
+  <section class="info-box" id="explore">
+    <h2>Explore {{city['cityname']}}</h2>
+    <p class="section-intro">Detailed information pages about {{city['cityname']}}.</p>
+    % city_url = '/country/' + city['slug_country'] + '/' + city['slug_region'] + '/' + city['slug_city'] + '/'
+    <div class="explore-grid">
 
-  <!-- ── Monthly Sun Calendar ────────────────────────────────── -->
-  % if sun_calendar:
-  <section class="info-box sun-calendar" id="sun-calendar">
-    <h2>Monthly Sunrise and Sunset Calendar for {{city['cityname']}}, {{city['countryname']}}</h2>
-    <p class="section-intro">
-      Daily sunrise and sunset times (UTC) for <strong>{{city['cityname']}}</strong>
-      across the previous, current, and next month.
-      Use these tables to look up any specific date.
-    </p>
-    % for mo in sun_calendar:
-    <h3>{{mo['month_name']}} {{mo['year']}} – Sunrise &amp; Sunset in {{city['cityname']}}</h3>
-    <div class="sun-table-wrap">
-      <table class="sun-table">
-        <thead>
-          <tr>
-            <th>Day</th>
-            <th>Date</th>
-            <th>Sunrise (UTC)</th>
-            <th>Sunset (UTC)</th>
-            <th>Daylight</th>
-          </tr>
-        </thead>
-        <tbody>
-          % for d in mo['days']:
-          <tr{{!' class="today-row"' if d['is_today'] else ''}}>
-            <td class="dow">{{d['dow']}}</td>
-            <td class="date-col">{{d['day']}} {{mo['month_name'][:3]}} {{mo['year']}}</td>
-            <td class="sun-rise">{{d['sunrise']}}</td>
-            <td class="sun-set">{{d['sunset']}}</td>
-            <td class="day-len">{{d['day_length']}}</td>
-          </tr>
+      <a class="explore-card" href="{{city_url}}time/">
+        <span class="explore-icon">🕐</span>
+        <span class="explore-label">Current Time</span>
+        % if geo['tz_label']:
+        <span class="explore-value">{{geo['tz_label']}}</span>
+        % end
+      </a>
+
+      <a class="explore-card" href="{{city_url}}sunrise/">
+        <span class="explore-icon">🌅</span>
+        <span class="explore-label">Sunrise &amp; Sunset</span>
+        % if geo['sunrise']:
+        <span class="explore-value">{{geo['sunrise']}} / {{geo['sunset']}}</span>
+        % end
+      </a>
+
+      <a class="explore-card" href="{{city_url}}moon/">
+        <span class="explore-icon">
+          % if moon:
+          {{moon['emoji']}}
+          % else:
+          🌙
           % end
-        </tbody>
-      </table>
+        </span>
+        <span class="explore-label">Moon Phase</span>
+        % if moon:
+        <span class="explore-value">{{moon['name']}} · {{moon['illumination']}}%</span>
+        % end
+      </a>
+
+      <a class="explore-card" href="{{city_url}}golden-hour/">
+        <span class="explore-icon">📸</span>
+        <span class="explore-label">Golden Hour</span>
+        % if geo['sunrise']:
+        <span class="explore-value">{{geo['sunrise']}} &amp; {{geo['sunset']}}</span>
+        % end
+      </a>
+
+      <a class="explore-card" href="{{city_url}}daylight/">
+        <span class="explore-icon">☀️</span>
+        <span class="explore-label">Daylight Hours</span>
+        % if geo['day_length']:
+        <span class="explore-value">{{geo['day_length']}} today</span>
+        % end
+      </a>
+
     </div>
-    % end
   </section>
   % end
+
 
   <!-- ── Geographic Position ──────────────────────────────────── -->
   <section class="info-box" id="geographic-position">
