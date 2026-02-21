@@ -1,3 +1,5 @@
+import gzip
+import io
 import math
 import os
 from bottle import Bottle, run, template, static_file, request, response, abort, HTTPError
@@ -6,6 +8,60 @@ import db
 import utils
 
 app = Bottle()
+
+
+# ── Gzip middleware ────────────────────────────────────────────────
+
+_COMPRESSIBLE = ('text/', 'application/json', 'application/javascript',
+                 'application/xml', 'image/svg')
+
+class GzipMiddleware:
+    """Comprime le risposte HTTP con gzip se il client le accetta."""
+
+    def __init__(self, wsgi_app, min_size=512):
+        self.app      = wsgi_app
+        self.min_size = min_size
+
+    def __call__(self, environ, start_response):
+        if 'gzip' not in environ.get('HTTP_ACCEPT_ENCODING', ''):
+            return self.app(environ, start_response)
+
+        captured_status  = []
+        captured_headers = []
+
+        def fake_start(status, headers, exc_info=None):
+            captured_status.append(status)
+            captured_headers.append(list(headers))
+
+        body = b''.join(self.app(environ, fake_start))
+
+        status  = captured_status[0]
+        headers = captured_headers[0]
+
+        ctype = next((v for k, v in headers if k.lower() == 'content-type'), '')
+        should_compress = (
+            len(body) >= self.min_size
+            and any(t in ctype for t in _COMPRESSIBLE)
+        )
+
+        if not should_compress:
+            start_response(status, headers)
+            return [body]
+
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode='wb', compresslevel=6) as f:
+            f.write(body)
+        compressed = buf.getvalue()
+
+        new_headers = [(k, v) for k, v in headers
+                       if k.lower() not in ('content-length', 'content-encoding')]
+        new_headers += [
+            ('Content-Encoding', 'gzip'),
+            ('Content-Length',   str(len(compressed))),
+            ('Vary',             'Accept-Encoding'),
+        ]
+        start_response(status, new_headers)
+        return [compressed]
 
 BASE_URL = os.environ.get('BASE_URL', 'https://example.com').rstrip('/')
 
@@ -361,9 +417,14 @@ def city_nearby_page(cslug, rslug, cityslug):
                                 + f'Full list of cities near {cn} with distances.')
 
 
+# ── WSGI app (con gzip) ───────────────────────────────────────────
+# Usato da gunicorn/uwsgi: gunicorn "app:application"
+application = GzipMiddleware(app)
+
+
 # ── Avvio ─────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('DEBUG', 'false').lower() == 'true'
-    run(app, host='0.0.0.0', port=port, debug=debug, reloader=debug)
+    run(application, host='0.0.0.0', port=port, debug=debug, reloader=debug)
