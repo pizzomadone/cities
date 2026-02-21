@@ -504,7 +504,7 @@ def current_season(lat):
 # TABELLA LUCE ANNUALE (12 mesi)
 # ---------------------------------------------------------------------------
 
-def _compute_annual_daylight(lat, lon):
+def _compute_annual_daylight(lat, lon, utc_offset=0):
     from datetime import date as _date
     year = datetime.utcnow().year
     result = []
@@ -521,12 +521,14 @@ def _compute_annual_daylight(lat, lon):
             rise_fmt, sset_fmt, length_fmt = 'N/A', 'N/A', 'N/A'
             dl_h, rise_h, sset_h = 0.0, 0.0, 0.0
         else:
-            rise_fmt = _fmt_time(rise)
-            sset_fmt = _fmt_time(sset)
+            local_rise = (rise + utc_offset) % 24
+            local_sset = (sset + utc_offset) % 24
+            rise_fmt = _fmt_time(local_rise)
+            sset_fmt = _fmt_time(local_sset)
             length_fmt = _fmt_duration(length)
             dl_h   = round(length, 2)
-            rise_h = round(rise, 3)
-            sset_h = round(sset, 3)
+            rise_h = round(local_rise, 3)
+            sset_h = round(local_sset, 3)
         result.append({
             'month': m,
             'month_name': datetime(year, m, 15).strftime('%B'),
@@ -541,10 +543,10 @@ def _compute_annual_daylight(lat, lon):
     return result
 
 
-def annual_daylight(lat, lon):
+def annual_daylight(lat, lon, utc_offset=0):
     """Dati alba/tramonto per il 15 di ogni mese (cached giornalmente per coordinate)."""
-    return _day_cache(('annual_daylight', lat, lon),
-                      lambda: _compute_annual_daylight(lat, lon))
+    return _day_cache(('annual_daylight', lat, lon, utc_offset),
+                      lambda: _compute_annual_daylight(lat, lon, utc_offset))
 
 
 # ---------------------------------------------------------------------------

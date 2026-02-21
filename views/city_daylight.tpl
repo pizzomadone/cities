@@ -67,13 +67,13 @@
     <h2>Sunrise &amp; Sunset by Month – {{city['cityname']}}</h2>
     <p class="section-intro">
       Typical sunrise, sunset, and total hours of sunlight for <strong>{{city['cityname']}}, {{city['countryname']}}</strong>
-      throughout the year. Values are calculated for the 15th of each month (UTC).
+      throughout the year. Values are calculated for the 15th of each month ({{geo['tz_label']}}).
     </p>
     <div class="sun-table-wrap">
       <table class="sun-table annual-table">
         <thead>
           <tr>
-            <th>Month</th><th>Sunrise (UTC)</th><th>Sunset (UTC)</th><th>Daylight</th>
+            <th>Month</th><th>Sunrise ({{geo['tz_label']}})</th><th>Sunset ({{geo['tz_label']}})</th><th>Daylight</th>
           </tr>
         </thead>
         <tbody>
@@ -116,14 +116,14 @@
       labels: labels,
       datasets: [
         {
-          label: 'Sunrise (UTC)',
+          label: 'Sunrise ({{geo['tz_label']}})',
           data: sunrises,
           borderColor: '#e8821d',
           backgroundColor: 'rgba(232,130,29,0.08)',
           tension: 0.4, fill: false, pointRadius: 4,
         },
         {
-          label: 'Sunset (UTC)',
+          label: 'Sunset ({{geo['tz_label']}})',
           data: sunsets,
           borderColor: '#2a5298',
           backgroundColor: 'rgba(42,82,152,0.12)',
@@ -145,7 +145,7 @@
       },
       scales: {
         y: {
-          title: { display: true, text: 'Time of Day (UTC)' },
+          title: { display: true, text: 'Time of Day ({{geo['tz_label']}})' },
           ticks: { callback: function(v) { return hToHHMM(v); } },
           suggestedMin: 0, suggestedMax: 24,
         }

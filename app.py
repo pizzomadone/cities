@@ -326,7 +326,7 @@ def city_sunrise_page(cslug, rslug, cityslug):
     lat, lon, has_coords = d['lat'], d['lon'], d['has_coords']
     sun_calendar = utils.build_sun_calendar(lat, lon) if has_coords else []
     season       = utils.current_season(lat) if has_coords else None
-    ann_daylight = utils.annual_daylight(lat, lon) if has_coords else []
+    ann_daylight = utils.annual_daylight(lat, lon, d['geo']['tz_offset'] or 0) if has_coords else []
     city_row = d['city']
     cn, co = city_row['cityname'], city_row['countryname']
     return template('city_sunrise',
@@ -381,7 +381,7 @@ def city_daylight_page(cslug, rslug, cityslug):
     if d is None:
         abort(404)
     lat, lon, has_coords = d['lat'], d['lon'], d['has_coords']
-    ann_daylight = utils.annual_daylight(lat, lon) if has_coords else []
+    ann_daylight = utils.annual_daylight(lat, lon, d['geo']['tz_offset'] or 0) if has_coords else []
     city_row = d['city']
     cn, co = city_row['cityname'], city_row['countryname']
     return template('city_daylight',

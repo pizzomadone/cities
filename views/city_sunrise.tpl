@@ -42,7 +42,7 @@
       It is currently <strong>{{season['name']}}</strong> {{season['emoji']}} in the {{season['hemisphere']}}
       ({{season['months']}}).
       % end
-      All times shown are in Coordinated Universal Time (UTC).
+      The annual chart and monthly table use local standard time ({{geo['tz_label']}}). The day-by-day calendar below shows UTC.
     </p>
   </section>
 
@@ -140,14 +140,14 @@
       labels: labels,
       datasets: [
         {
-          label: 'Sunrise (UTC)',
+          label: 'Sunrise ({{geo['tz_label']}})',
           data: sunrises,
           borderColor: '#e8821d',
           backgroundColor: 'rgba(232,130,29,0.06)',
           tension: 0.4, fill: false, pointRadius: 4, pointHoverRadius: 6,
         },
         {
-          label: 'Sunset (UTC)',
+          label: 'Sunset ({{geo['tz_label']}})',
           data: sunsets,
           borderColor: '#2a5298',
           backgroundColor: 'rgba(42,82,152,0.10)',
@@ -169,7 +169,7 @@
       },
       scales: {
         y: {
-          title: { display: true, text: 'Time of Day (UTC)' },
+          title: { display: true, text: 'Time of Day ({{geo['tz_label']}})' },
           ticks: { callback: function(v) { return hToHHMM(v); } },
           suggestedMin: 0, suggestedMax: 24,
         }
