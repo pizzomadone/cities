@@ -278,7 +278,8 @@ def city(cslug, rslug, cityslug):
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
                 dist = utils.haversine(lat, lon, n['latitude'], n['longitude'])
-                nearby.append(dict(n) | {'distance_km': dist})
+                if dist > 0:
+                    nearby.append(dict(n) | {'distance_km': dist})
         moon   = utils.moon_phase()
         season = utils.current_season(lat)
 
@@ -404,7 +405,8 @@ def city_nearby_page(cslug, rslug, cityslug):
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
                 dist = utils.haversine(lat, lon, n['latitude'], n['longitude'])
-                nearby.append(dict(n) | {'distance_km': dist})
+                if dist > 0:
+                    nearby.append(dict(n) | {'distance_km': dist})
     cn, co, rn = city_row['cityname'], city_row['countryname'], city_row['stateprovince']
     nearest = nearby[0]['cityname'] if nearby else None
     nearest_km = round(nearby[0]['distance_km']) if nearby else None
