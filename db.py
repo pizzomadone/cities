@@ -119,7 +119,11 @@ def get_city(country_slug, region_slug, city_slug):
 
 
 def get_nearby_cities(lat, lon, current_cityid, limit=12, radius_deg=2.0):
-    """Città vicine usando bounding box + distanza euclidea approssimata."""
+    """Città vicine usando bounding box + distanza euclidea approssimata.
+
+    Esclude cityid corrente e qualsiasi record con coordinate identiche
+    (duplicati nel dataset con regione errata).
+    """
     with get_conn() as conn:
         return conn.execute('''
             SELECT cityid, cityname, stateprovince, countryname,
@@ -134,6 +138,7 @@ def get_nearby_cities(lat, lon, current_cityid, limit=12, radius_deg=2.0):
               AND  latitude  IS NOT NULL
               AND  longitude IS NOT NULL
               AND  cityid    != ?
+              AND  NOT (latitude = ? AND longitude = ?)
             ORDER  BY dist_sq
             LIMIT  ?
         ''', (
@@ -141,6 +146,7 @@ def get_nearby_cities(lat, lon, current_cityid, limit=12, radius_deg=2.0):
             lat - radius_deg, lat + radius_deg,
             lon - radius_deg, lon + radius_deg,
             current_cityid,
+            lat, lon,
             limit
         )).fetchall()
 
