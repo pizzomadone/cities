@@ -475,6 +475,45 @@ h2 { font-size: 1.2rem; margin: 1.5rem 0 .6rem; color: var(--clr-text); }
 .golden-panel--morning { border-left: 3px solid #f5a623; padding-left: .75rem; }
 .golden-panel--evening { border-left: 3px solid #2a5298; padding-left: .75rem; }
 
+/* ── Chart.js container ─────────────────────────────────────── */
+.chart-container {
+  position: relative;
+  width: 100%;
+  max-height: 340px;
+  margin: .75rem 0 .25rem;
+}
+.chart-container canvas {
+  max-height: 340px;
+}
+
+/* ── Moon calendar rows ──────────────────────────────────────── */
+.sun-table tr.full-moon-row td {
+  background: #fffbeb;
+  font-weight: 600;
+}
+.sun-table tr.full-moon-row .moon-name { color: #92400e; }
+.sun-table tr.new-moon-row td {
+  background: #f1f5f9;
+}
+.sun-table tr.new-moon-row .moon-name { color: #475569; }
+
+/* ── Nearby cities table ─────────────────────────────────────── */
+.nearby-table { min-width: 380px; }
+.nearby-table .nearby-rank {
+  color: var(--clr-muted);
+  font-size: .8rem;
+  width: 2rem;
+  text-align: center;
+}
+.nearby-table .nearby-city { font-weight: 500; }
+.nearby-table .nearby-region,
+.nearby-table .nearby-country { color: var(--clr-muted); font-size: .85rem; }
+.nearby-table .nearby-dist {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--clr-primary);
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }

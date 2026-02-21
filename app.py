@@ -269,15 +269,17 @@ def city_sunrise_page(cslug, rslug, cityslug):
     lat, lon, has_coords = d['lat'], d['lon'], d['has_coords']
     sun_calendar = utils.build_sun_calendar(lat, lon) if has_coords else []
     season       = utils.current_season(lat) if has_coords else None
+    ann_daylight = utils.annual_daylight(lat, lon) if has_coords else []
     city_row = d['city']
     cn, co = city_row['cityname'], city_row['countryname']
     return template('city_sunrise',
                     **d,
                     sun_calendar=sun_calendar,
                     season=season,
+                    ann_daylight=ann_daylight,
                     title=f'Sunrise and Sunset in {cn}, {co} – Times & Calendar',
                     description=f'Sunrise and sunset times in {cn}, {co} today and for every '
-                                f'day of the month. Daily daylight duration calendar.')
+                                f'day of the month. Daily daylight duration and annual chart.')
 
 
 @app.route('/country/<cslug>/<rslug>/<cityslug>/moon/')
@@ -331,6 +333,32 @@ def city_daylight_page(cslug, rslug, cityslug):
                     title=f'Daylight Hours in {cn}, {co} – By Month & Season',
                     description=f'How many hours of daylight does {cn}, {co} get? '
                                 f'Monthly daylight duration table and annual chart.')
+
+
+@app.route('/country/<cslug>/<rslug>/<cityslug>/nearby/')
+def city_nearby_page(cslug, rslug, cityslug):
+    d = _city_base(cslug, rslug, cityslug)
+    if d is None:
+        abort(404)
+    city_row = d['city']
+    lat, lon, has_coords = d['lat'], d['lon'], d['has_coords']
+    nearby = []
+    if has_coords:
+        nearby_raw = db.get_nearby_cities(lat, lon, city_row['cityid'])
+        for n in nearby_raw:
+            if n['latitude'] and n['longitude']:
+                dist = utils.haversine(lat, lon, n['latitude'], n['longitude'])
+                nearby.append(dict(n) | {'distance_km': dist})
+    cn, co, rn = city_row['cityname'], city_row['countryname'], city_row['stateprovince']
+    nearest = nearby[0]['cityname'] if nearby else None
+    nearest_km = round(nearby[0]['distance_km']) if nearby else None
+    return template('city_nearby',
+                    **d,
+                    nearby=nearby,
+                    title=f'Cities near {cn}, {co} – Nearest Cities with Distances',
+                    description=f'What cities are closest to {cn}, {co}? '
+                                + (f'The nearest city is {nearest}, {nearest_km} km away. ' if nearest else '')
+                                + f'Full list of cities near {cn} with distances.')
 
 
 # ── Avvio ─────────────────────────────────────────────────────────

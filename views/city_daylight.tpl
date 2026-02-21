@@ -1,13 +1,13 @@
-% import re as _re
+% import re as _re, json as _json
 % cslug_cont = _re.sub(r'[-\s]+', '-', city['continent'].lower().strip())
 % city_url = '/country/' + city['slug_country'] + '/' + city['slug_region'] + '/' + city['slug_city'] + '/'
-% max_h = max((m['day_length_h'] for m in ann_daylight), default=24) or 24
 
 % rebase('base',
 %   title=title,
 %   description=description,
 %   canonical=base_url + city_url + 'daylight/',
 %   use_leaflet=False,
+%   use_chartjs=True,
 %   breadcrumbs=[
 %     {'label': city['continent'],     'url': '/continent/' + cslug_cont + '/'},
 %     {'label': city['countryname'],   'url': '/country/' + city['slug_country'] + '/'},
@@ -25,29 +25,40 @@
     % if geo['flag']:
     <span class="city-flag">{{geo['flag']}}</span>
     % end
-    Daylight Hours in {{city['cityname']}}, {{city['countryname']}} by Month
+    Daylight Hours in {{city['cityname']}}, {{city['countryname']}} – By Month
   </h1>
 
   % if ann_daylight:
+  % lat_abs = abs(city['latitude'])
 
-  <!-- ── Chart ────────────────────────────────────────────────── -->
-  <section class="info-box" id="daylight-chart">
-    <h2>Annual Daylight Chart – {{city['cityname']}}</h2>
+  <!-- ── Intro SEO ─────────────────────────────────────────────── -->
+  <section class="info-box" id="daylight-intro">
     <p class="section-intro">
-      Hours of daylight per month in <strong>{{city['cityname']}}</strong>.
-      Calculated for the 15th of each month.
-    </p>
-    <div class="daylight-chart" aria-label="Daylight hours bar chart">
-      % for m in ann_daylight:
-      % bar_pct = round(m['day_length_h'] / max_h * 100, 1)
-      <div class="daylight-bar-row">
-        <span class="daylight-bar-label">{{m['month_short']}}</span>
-        <div class="daylight-bar-track">
-          <div class="daylight-bar-fill" style="width:{{bar_pct}}%"></div>
-        </div>
-        <span class="daylight-bar-value">{{m['day_length']}}</span>
-      </div>
+      How many hours of daylight does <strong>{{city['cityname']}}</strong> get throughout the year?
+      Located at latitude <strong>{{city['latitude']}}°</strong>,
+      % if lat_abs < 10:
+      {{city['cityname']}} is near the equator and experiences relatively stable daylight hours year-round, typically between 11 and 13 hours.
+      % elif lat_abs < 35:
+      {{city['cityname']}} is in the tropics or subtropics, where daylight varies moderately between seasons.
+      % elif lat_abs < 60:
+      {{city['cityname']}} experiences significant seasonal variation — long summer days and short winter days are a defining feature of life at this latitude.
+      % else:
+      {{city['cityname']}} is at a high latitude and experiences extreme seasonal daylight variation, including very long summer days and very short winter days.
       % end
+      Today, <strong>{{city['cityname']}}</strong> has approximately <strong>{{geo['day_length']}}</strong> of daylight.
+    </p>
+  </section>
+
+  <!-- ── Chart ─────────────────────────────────────────────────── -->
+  <section class="info-box" id="daylight-chart">
+    <h2>Annual Daylight Hours Chart – {{city['cityname']}}</h2>
+    <p class="section-intro">
+      The chart shows how sunrise and sunset times shift throughout the year in
+      <strong>{{city['cityname']}}</strong>. The shaded area between the two lines represents
+      the hours of daylight each month. All times are in UTC.
+    </p>
+    <div class="chart-container">
+      <canvas id="daylightChart"></canvas>
     </div>
   </section>
 
@@ -55,17 +66,14 @@
   <section class="info-box" id="daylight-table">
     <h2>Sunrise &amp; Sunset by Month – {{city['cityname']}}</h2>
     <p class="section-intro">
-      Typical sunrise, sunset, and total daylight for
-      <strong>{{city['cityname']}}</strong> throughout the year (UTC).
+      Typical sunrise, sunset, and total hours of sunlight for <strong>{{city['cityname']}}, {{city['countryname']}}</strong>
+      throughout the year. Values are calculated for the 15th of each month (UTC).
     </p>
     <div class="sun-table-wrap">
       <table class="sun-table annual-table">
         <thead>
           <tr>
-            <th>Month</th>
-            <th>Sunrise (UTC)</th>
-            <th>Sunset (UTC)</th>
-            <th>Daylight</th>
+            <th>Month</th><th>Sunrise (UTC)</th><th>Sunset (UTC)</th><th>Daylight</th>
           </tr>
         </thead>
         <tbody>
@@ -89,3 +97,61 @@
   % end
 
 </article>
+
+% if ann_daylight:
+<script>
+(function() {
+  var labels   = {{!_json.dumps([m['month_short'] for m in ann_daylight])}};
+  var sunrises = {{!_json.dumps([m['sunrise_h'] for m in ann_daylight])}};
+  var sunsets  = {{!_json.dumps([m['sunset_h']  for m in ann_daylight])}};
+
+  function hToHHMM(h) {
+    var hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+    return String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+  }
+
+  new Chart(document.getElementById('daylightChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Sunrise (UTC)',
+          data: sunrises,
+          borderColor: '#e8821d',
+          backgroundColor: 'rgba(232,130,29,0.08)',
+          tension: 0.4, fill: false, pointRadius: 4,
+        },
+        {
+          label: 'Sunset (UTC)',
+          data: sunsets,
+          borderColor: '#2a5298',
+          backgroundColor: 'rgba(42,82,152,0.12)',
+          tension: 0.4, fill: '-1', pointRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index' },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': ' + hToHHMM(ctx.parsed.y);
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          title: { display: true, text: 'Time of Day (UTC)' },
+          ticks: { callback: function(v) { return hToHHMM(v); } },
+          suggestedMin: 0, suggestedMax: 24,
+        }
+      }
+    }
+  });
+})();
+</script>
+% end

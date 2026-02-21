@@ -410,22 +410,34 @@ def _time_at_elevation(lat, lon, elev_deg, N, morning=True):
 
 def golden_hour(lat, lon):
     """Calcola golden hour e blue hour per oggi.
-    Restituisce dict con chiavi golden_morning_*, golden_evening_*, blue_morning_*, blue_evening_*."""
+    Restituisce dict con chiavi *_h (float UTC) e senza suffisso (stringa formattata)."""
     today = datetime.utcnow()
     N = today.timetuple().tm_yday
 
     def fmt(h):
         return _fmt_time(h) if h is not None else 'N/A'
 
+    def rnd(h):
+        return round(h, 3) if h is not None else None
+
+    bms = _time_at_elevation(lat, lon, -6.0,   N, morning=True)
+    bme = _time_at_elevation(lat, lon, -4.0,   N, morning=True)
+    gms = _time_at_elevation(lat, lon, -0.833, N, morning=True)
+    gme = _time_at_elevation(lat, lon,  6.0,   N, morning=True)
+    ges = _time_at_elevation(lat, lon,  6.0,   N, morning=False)
+    gee = _time_at_elevation(lat, lon, -0.833, N, morning=False)
+    bes = _time_at_elevation(lat, lon, -4.0,   N, morning=False)
+    bee = _time_at_elevation(lat, lon, -6.0,   N, morning=False)
+
     return {
-        'golden_morning_start': fmt(_time_at_elevation(lat, lon, -0.833, N, morning=True)),
-        'golden_morning_end':   fmt(_time_at_elevation(lat, lon, 6.0,   N, morning=True)),
-        'golden_evening_start': fmt(_time_at_elevation(lat, lon, 6.0,   N, morning=False)),
-        'golden_evening_end':   fmt(_time_at_elevation(lat, lon, -0.833, N, morning=False)),
-        'blue_morning_start':   fmt(_time_at_elevation(lat, lon, -6.0,  N, morning=True)),
-        'blue_morning_end':     fmt(_time_at_elevation(lat, lon, -4.0,  N, morning=True)),
-        'blue_evening_start':   fmt(_time_at_elevation(lat, lon, -4.0,  N, morning=False)),
-        'blue_evening_end':     fmt(_time_at_elevation(lat, lon, -6.0,  N, morning=False)),
+        'blue_morning_start':    fmt(bms), 'blue_morning_start_h':    rnd(bms),
+        'blue_morning_end':      fmt(bme), 'blue_morning_end_h':      rnd(bme),
+        'golden_morning_start':  fmt(gms), 'golden_morning_start_h':  rnd(gms),
+        'golden_morning_end':    fmt(gme), 'golden_morning_end_h':    rnd(gme),
+        'golden_evening_start':  fmt(ges), 'golden_evening_start_h':  rnd(ges),
+        'golden_evening_end':    fmt(gee), 'golden_evening_end_h':    rnd(gee),
+        'blue_evening_start':    fmt(bes), 'blue_evening_start_h':    rnd(bes),
+        'blue_evening_end':      fmt(bee), 'blue_evening_end_h':      rnd(bee),
     }
 
 
@@ -470,16 +482,21 @@ def annual_daylight(lat, lon):
         N = _date(year, m, 15).timetuple().tm_yday
         rise, sset, length = _sun_calc(lat, lon, N)
         if rise == 'midnight_sun':
-            rise_fmt, sset_fmt, length_fmt, dl_h = '☀️ all day', '—', '24h 00m', 24.0
+            rise_fmt, sset_fmt, length_fmt = '☀️ all day', '—', '24h 00m'
+            dl_h, rise_h, sset_h = 24.0, 0.0, 24.0
         elif rise == 'polar_night':
-            rise_fmt, sset_fmt, length_fmt, dl_h = '—', '🌑 all day', '0h 00m', 0.0
+            rise_fmt, sset_fmt, length_fmt = '—', '🌑 all day', '0h 00m'
+            dl_h, rise_h, sset_h = 0.0, 12.0, 12.0
         elif rise == 'na':
-            rise_fmt, sset_fmt, length_fmt, dl_h = 'N/A', 'N/A', 'N/A', 0.0
+            rise_fmt, sset_fmt, length_fmt = 'N/A', 'N/A', 'N/A'
+            dl_h, rise_h, sset_h = 0.0, 0.0, 0.0
         else:
             rise_fmt = _fmt_time(rise)
             sset_fmt = _fmt_time(sset)
             length_fmt = _fmt_duration(length)
-            dl_h = round(length, 2)
+            dl_h   = round(length, 2)
+            rise_h = round(rise, 3)
+            sset_h = round(sset, 3)
         result.append({
             'month': m,
             'month_name': datetime(year, m, 15).strftime('%B'),
@@ -488,6 +505,8 @@ def annual_daylight(lat, lon):
             'sunset': sset_fmt,
             'day_length': length_fmt,
             'day_length_h': dl_h,
+            'sunrise_h': rise_h,
+            'sunset_h': sset_h,
         })
     return result
 

@@ -7,6 +7,7 @@
 %   description=description,
 %   canonical=base_url + city_url + 'time/',
 %   use_leaflet=False,
+%   use_chartjs=False,
 %   breadcrumbs=[
 %     {'label': city['continent'],     'url': '/continent/' + cslug_cont + '/'},
 %     {'label': city['countryname'],   'url': '/country/' + city['slug_country'] + '/'},
@@ -28,6 +29,21 @@
   </h1>
 
   % if has_coords:
+
+  <!-- ── Intro SEO ─────────────────────────────────────────────── -->
+  <section class="info-box" id="time-intro">
+    <p class="section-intro">
+      What time is it in <strong>{{city['cityname']}}</strong> right now?
+      The clock below shows the current local time in
+      <strong>{{city['cityname']}}, {{city['countryname']}}</strong>
+      based on its longitude of <strong>{{city['longitude']}}°</strong>
+      (solar time zone <strong>{{geo['tz_label']}}</strong>).
+      Today, the sun rose at <strong>{{geo['sunrise']}}</strong> and will set
+      at <strong>{{geo['sunset']}}</strong> (UTC), giving
+      <strong>{{geo['day_length']}}</strong> of daylight.
+    </p>
+  </section>
+
   <!-- ── Live Clock ────────────────────────────────────────────── -->
   <section class="info-box" id="clock">
     <div class="clock-display">
