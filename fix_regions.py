@@ -5,13 +5,16 @@ MODALITÀ:
   python fix_regions.py            → dry-run: stampa report, non tocca nulla
   python fix_regions.py --apply    → applica le correzioni (fa backup prima)
 
-ALGORITMO in 3 fasi:
+ALGORITMO in 4 fasi:
   1. Calcola centroidi "puliti" per ogni regione (esclude outlier > 500 km)
-  2. DUPLICATI  : per ogni gruppo con stesse coordinate, tieni il record la
-                  cui regione ha il centroide più vicino → DELETE gli altri
+  2. DUPLICATI  : per ogni gruppo con stesse coordinate (±0.001°), tieni il
+                  record la cui regione ha il centroide più vicino → DELETE
   3. SINGOLI ERRATI: per ogni città la cui distanza dal centroide della propria
                      regione è > 3× la distanza dalla regione più vicina →
                      UPDATE con il regionid/stateprovince/slug_region corretti
+  4. DUPLICATI POST-UPDATE: simula gli UPDATE in memoria, poi trova coppie
+                     con stesso (cityname, countrycode, regionid) entro 50 km
+                     → DELETE il record con cityid maggiore
 """
 
 import math
@@ -255,9 +258,55 @@ def find_wrong_region_updates(cities, centroids, ids_to_delete_set):
     return updates
 
 
+# ── FASE 4: duplicati creati dagli UPDATE ────────────────────────────────────
+
+# Distanza massima (km) entro cui due record con stesso nome+regione
+# vengono considerati duplicati dello stesso luogo fisico
+POST_UPDATE_MAX_KM = 50
+
+
+def find_post_update_duplicates(cities, updates, phase2_delete_set):
+    """
+    Simula gli UPDATE della Fase 3 in memoria, poi raggruppa per
+    (cityname_lower, countrycode, regionid_effettivo).
+    Nelle coppie con distanza < POST_UPDATE_MAX_KM mantiene MIN(cityid),
+    marca l'altro per DELETE.
+    Restituisce (ids_to_delete, n_groups).
+    """
+    # Mappa cityid → regionid che avrà dopo gli UPDATE
+    update_map = {u['cityid']: u['new_regionid'] for u in updates}
+
+    groups = defaultdict(list)
+    for c in cities:
+        if c['cityid'] in phase2_delete_set:
+            continue
+        effective_region = update_map.get(c['cityid'], c['regionid'])
+        key = (c['cityname'].lower(), c['countrycode'], effective_region)
+        groups[key].append(c)
+
+    ids_to_delete = []
+    n_groups = 0
+    for key, group in groups.items():
+        if len(group) < 2:
+            continue
+        # Ordina per cityid; confronta ogni coppia
+        group.sort(key=lambda c: c['cityid'])
+        keep = group[0]
+        for other in group[1:]:
+            d = haversine(
+                keep['latitude'], keep['longitude'],
+                other['latitude'], other['longitude'],
+            )
+            if d < POST_UPDATE_MAX_KM:
+                ids_to_delete.append(other['cityid'])
+                n_groups += 1
+
+    return ids_to_delete, n_groups
+
+
 # ── REPORT ────────────────────────────────────────────────────────────────────
 
-def print_report(dup_ids, dup_stats, updates):
+def print_report(dup_ids, dup_stats, updates, post_ids, post_groups):
     print("=" * 65)
     print("  fix_regions.py — REPORT" + ("  [DRY RUN]" if DRY_RUN else "  [APPLY]"))
     print("=" * 65)
@@ -283,33 +332,40 @@ def print_report(dup_ids, dup_stats, updates):
                 f"  {u['dist_old_km']:>6} km  {u['dist_new_km']:>6} km"
             )
 
+    print(f"\n── FASE 4: Duplicati post-update ──────────────────────────────")
+    print(f"  Gruppi con duplicati < {POST_UPDATE_MAX_KM} km : {post_groups:>6,}")
+    print(f"  Record da DELETE (fase 4)          : {len(post_ids):>6,}")
+
     print(f"\n── TOTALE modifiche ───────────────────────────────────────────")
-    print(f"  DELETE : {len(dup_ids):,}")
+    print(f"  DELETE : {len(dup_ids) + len(post_ids):,}  (fase2={len(dup_ids):,}  fase4={len(post_ids):,})")
     print(f"  UPDATE : {len(updates):,}")
     print()
 
 
 # ── APPLICAZIONE ──────────────────────────────────────────────────────────────
 
-def apply_changes(conn, dup_ids, updates):
+def apply_changes(conn, dup_ids, updates, post_ids):
     backup = DB_PATH + '.bak'
     print(f"Backup → {backup}")
     shutil.copy2(DB_PATH, backup)
 
     cur = conn.cursor()
-
-    # DELETE duplicati in batch
-    print(f"Eliminazione {len(dup_ids):,} duplicati...")
     BATCH = 500
-    for i in range(0, len(dup_ids), BATCH):
-        chunk = dup_ids[i:i+BATCH]
-        placeholders = ','.join('?' * len(chunk))
-        cur.execute(f"DELETE FROM cities WHERE cityid IN ({placeholders})", chunk)
-    conn.commit()
-    print(f"  ✓ DELETE completate")
 
-    # UPDATE singoli errati
-    print(f"Correzione {len(updates):,} assegnazioni di regione...")
+    def batch_delete(ids, label):
+        print(f"Eliminazione {len(ids):,} {label}...")
+        for i in range(0, len(ids), BATCH):
+            chunk = ids[i:i+BATCH]
+            placeholders = ','.join('?' * len(chunk))
+            cur.execute(f"DELETE FROM cities WHERE cityid IN ({placeholders})", chunk)
+        conn.commit()
+        print(f"  ✓ DELETE completate")
+
+    # Fase 2 — duplicati per coordinate
+    batch_delete(dup_ids, "duplicati (fase 2)")
+
+    # Fase 3 — correzione regione
+    print(f"Correzione {len(updates):,} assegnazioni di regione (fase 3)...")
     for u in updates:
         cur.execute("""
             UPDATE cities
@@ -320,6 +376,10 @@ def apply_changes(conn, dup_ids, updates):
         """, (u['new_regionid'], u['new_province'], u['new_slug_reg'], u['cityid']))
     conn.commit()
     print(f"  ✓ UPDATE completate")
+
+    # Fase 4 — duplicati creati dagli UPDATE
+    if post_ids:
+        batch_delete(post_ids, "duplicati post-update (fase 4)")
 
     # Conta righe finali
     total = cur.execute("SELECT COUNT(*) FROM cities").fetchone()[0]
@@ -353,13 +413,17 @@ def main():
     updates = find_wrong_region_updates(cities, centroids, dup_ids_set)
     print(f"{len(updates):,} da correggere")
 
+    print("Analisi duplicati post-update...", end=' ', flush=True)
+    post_ids, post_groups = find_post_update_duplicates(cities, updates, dup_ids_set)
+    print(f"{len(post_ids):,} da eliminare")
+
     print()
-    print_report(dup_ids, dup_stats, updates)
+    print_report(dup_ids, dup_stats, updates, post_ids, post_groups)
 
     if not DRY_RUN:
         risposta = input("Confermi l'applicazione delle modifiche? [s/N] ").strip().lower()
         if risposta == 's':
-            apply_changes(conn, dup_ids, updates)
+            apply_changes(conn, dup_ids, updates, post_ids)
         else:
             print("Annullato.")
 
