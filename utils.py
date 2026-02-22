@@ -4,6 +4,26 @@ import math
 from datetime import datetime
 
 
+# ---------------------------------------------------------------------------
+# Cache in-process con TTL giornaliero (svuotata automaticamente a mezzanotte UTC)
+# ---------------------------------------------------------------------------
+
+_CACHE: dict = {}
+
+
+def _day_cache(key, fn):
+    """Esegue fn() la prima volta per la data odierna, poi restituisce il valore
+    memorizzato. Svuota automaticamente le voci del giorno precedente (lazy cleanup)."""
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    full_key = (today, key)
+    if full_key not in _CACHE:
+        stale = [k for k in list(_CACHE) if k[0] != today]
+        for k in stale:
+            del _CACHE[k]
+        _CACHE[full_key] = fn()
+    return _CACHE[full_key]
+
+
 def slugify(text):
     if not text:
         return ''
@@ -256,11 +276,7 @@ def _sun_calc(lat, lon, N):
     return (solar_noon - H_hours) % 24, (solar_noon + H_hours) % 24, 2 * H_hours
 
 
-def sunrise_sunset(lat, lon):
-    """
-    Calcola alba e tramonto approssimati (UTC) per oggi.
-    Restituisce (sunrise_str, sunset_str, day_length_str, date_str).
-    """
+def _compute_sunrise_sunset(lat, lon):
     today = datetime.utcnow()
     N = today.timetuple().tm_yday
     date_str = today.strftime('%B %d, %Y')
@@ -272,6 +288,12 @@ def sunrise_sunset(lat, lon):
     if rise == 'na':
         return 'N/A', 'N/A', 'N/A', date_str
     return _fmt_time(rise) + ' UTC', _fmt_time(sset) + ' UTC', _fmt_duration(length), date_str
+
+
+def sunrise_sunset(lat, lon):
+    """Calcola alba/tramonto per oggi (cached giornalmente per coordinate)."""
+    return _day_cache(('sunrise_sunset', lat, lon),
+                      lambda: _compute_sunrise_sunset(lat, lon))
 
 
 def sunrise_sunset_for_date(lat, lon, year, month, day):
@@ -291,12 +313,7 @@ def sunrise_sunset_for_date(lat, lon, year, month, day):
     return _fmt_time(rise), _fmt_time(sset), _fmt_duration(length)
 
 
-def build_sun_calendar(lat, lon):
-    """
-    Costruisce il calendario alba/tramonto per 3 mesi: precedente, corrente, successivo.
-    Restituisce una lista di 3 dict con chiavi: year, month, month_name, days.
-    Ogni giorno: {day, dow, date_iso, sunrise, sunset, day_length, is_today}.
-    """
+def _compute_sun_calendar(lat, lon):
     import calendar as _cal
     from datetime import date as _date
 
@@ -337,6 +354,12 @@ def build_sun_calendar(lat, lon):
     return result
 
 
+def build_sun_calendar(lat, lon):
+    """Calendario alba/tramonto per 3 mesi (cached giornalmente per coordinate)."""
+    return _day_cache(('build_sun_calendar', lat, lon),
+                      lambda: _compute_sun_calendar(lat, lon))
+
+
 # ---------------------------------------------------------------------------
 # FASE LUNARE
 # ---------------------------------------------------------------------------
@@ -357,8 +380,7 @@ def _moon_emoji_for_date(year, month, day):
     else:             return '🌘'
 
 
-def moon_phase():
-    """Fase lunare di oggi. Restituisce dict con name, emoji, illumination, age, days_to_full, days_to_new."""
+def _compute_moon_phase():
     SYNODIC = 29.53058867
     REF_NEW_MOON = datetime(2000, 1, 6, 18, 14)
     now = datetime.utcnow()
@@ -382,6 +404,11 @@ def moon_phase():
         'days_to_full': round(days_to_full, 1),
         'days_to_new':  round(days_to_new, 1),
     }
+
+
+def moon_phase():
+    """Fase lunare di oggi (cached giornalmente)."""
+    return _day_cache('moon_phase', _compute_moon_phase)
 
 
 # ---------------------------------------------------------------------------
@@ -408,9 +435,7 @@ def _time_at_elevation(lat, lon, elev_deg, N, morning=True):
     return (solar_noon - H / 15) % 24 if morning else (solar_noon + H / 15) % 24
 
 
-def golden_hour(lat, lon):
-    """Calcola golden hour e blue hour per oggi.
-    Restituisce dict con chiavi *_h (float UTC) e senza suffisso (stringa formattata)."""
+def _compute_golden_hour(lat, lon):
     today = datetime.utcnow()
     N = today.timetuple().tm_yday
 
@@ -439,6 +464,12 @@ def golden_hour(lat, lon):
         'blue_evening_start':    fmt(bes), 'blue_evening_start_h':    rnd(bes),
         'blue_evening_end':      fmt(bee), 'blue_evening_end_h':      rnd(bee),
     }
+
+
+def golden_hour(lat, lon):
+    """Golden hour e blue hour per oggi (cached giornalmente per coordinate)."""
+    return _day_cache(('golden_hour', lat, lon),
+                      lambda: _compute_golden_hour(lat, lon))
 
 
 # ---------------------------------------------------------------------------
@@ -473,12 +504,11 @@ def current_season(lat):
 # TABELLA LUCE ANNUALE (12 mesi)
 # ---------------------------------------------------------------------------
 
-def annual_daylight(lat, lon):
-    """Restituisce lista di 12 dict con dati alba/tramonto per il 15 di ogni mese."""
+def _compute_annual_daylight(lat, lon, utc_offset=0):
+    from datetime import date as _date
     year = datetime.utcnow().year
     result = []
     for m in range(1, 13):
-        from datetime import date as _date
         N = _date(year, m, 15).timetuple().tm_yday
         rise, sset, length = _sun_calc(lat, lon, N)
         if rise == 'midnight_sun':
@@ -491,12 +521,14 @@ def annual_daylight(lat, lon):
             rise_fmt, sset_fmt, length_fmt = 'N/A', 'N/A', 'N/A'
             dl_h, rise_h, sset_h = 0.0, 0.0, 0.0
         else:
-            rise_fmt = _fmt_time(rise)
-            sset_fmt = _fmt_time(sset)
+            local_rise = (rise + utc_offset) % 24
+            local_sset = (sset + utc_offset) % 24
+            rise_fmt = _fmt_time(local_rise)
+            sset_fmt = _fmt_time(local_sset)
             length_fmt = _fmt_duration(length)
             dl_h   = round(length, 2)
-            rise_h = round(rise, 3)
-            sset_h = round(sset, 3)
+            rise_h = round(local_rise, 3)
+            sset_h = round(local_sset, 3)
         result.append({
             'month': m,
             'month_name': datetime(year, m, 15).strftime('%B'),
@@ -509,6 +541,12 @@ def annual_daylight(lat, lon):
             'sunset_h': sset_h,
         })
     return result
+
+
+def annual_daylight(lat, lon, utc_offset=0):
+    """Dati alba/tramonto per il 15 di ogni mese (cached giornalmente per coordinate)."""
+    return _day_cache(('annual_daylight', lat, lon, utc_offset),
+                      lambda: _compute_annual_daylight(lat, lon, utc_offset))
 
 
 # ---------------------------------------------------------------------------
@@ -717,8 +755,7 @@ COUNTRY_DATA = {
 }
 
 
-def build_moon_calendar():
-    """Restituisce 3 mesi (prev, curr, next) di fasi lunari per ogni giorno."""
+def _compute_moon_calendar():
     import calendar as _cal
     from datetime import date as _date
     SYNODIC = 29.53058867
@@ -758,6 +795,11 @@ def build_moon_calendar():
             'days': days,
         })
     return result
+
+
+def build_moon_calendar():
+    """Calendario lunare per 3 mesi (cached giornalmente)."""
+    return _day_cache('build_moon_calendar', _compute_moon_calendar)
 
 
 def get_country_info(country_code):

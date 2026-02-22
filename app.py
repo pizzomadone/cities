@@ -1,3 +1,5 @@
+import gzip
+import io
 import math
 import os
 from bottle import Bottle, run, template, static_file, request, response, abort, HTTPError
@@ -6,6 +8,60 @@ import db
 import utils
 
 app = Bottle()
+
+
+# ── Gzip middleware ────────────────────────────────────────────────
+
+_COMPRESSIBLE = ('text/', 'application/json', 'application/javascript',
+                 'application/xml', 'image/svg')
+
+class GzipMiddleware:
+    """Comprime le risposte HTTP con gzip se il client le accetta."""
+
+    def __init__(self, wsgi_app, min_size=512):
+        self.app      = wsgi_app
+        self.min_size = min_size
+
+    def __call__(self, environ, start_response):
+        if 'gzip' not in environ.get('HTTP_ACCEPT_ENCODING', ''):
+            return self.app(environ, start_response)
+
+        captured_status  = []
+        captured_headers = []
+
+        def fake_start(status, headers, exc_info=None):
+            captured_status.append(status)
+            captured_headers.append(list(headers))
+
+        body = b''.join(self.app(environ, fake_start))
+
+        status  = captured_status[0]
+        headers = captured_headers[0]
+
+        ctype = next((v for k, v in headers if k.lower() == 'content-type'), '')
+        should_compress = (
+            len(body) >= self.min_size
+            and any(t in ctype for t in _COMPRESSIBLE)
+        )
+
+        if not should_compress:
+            start_response(status, headers)
+            return [body]
+
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode='wb', compresslevel=6) as f:
+            f.write(body)
+        compressed = buf.getvalue()
+
+        new_headers = [(k, v) for k, v in headers
+                       if k.lower() not in ('content-length', 'content-encoding')]
+        new_headers += [
+            ('Content-Encoding', 'gzip'),
+            ('Content-Length',   str(len(compressed))),
+            ('Vary',             'Accept-Encoding'),
+        ]
+        start_response(status, new_headers)
+        return [compressed]
 
 BASE_URL = os.environ.get('BASE_URL', 'https://example.com').rstrip('/')
 
@@ -222,7 +278,8 @@ def city(cslug, rslug, cityslug):
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
                 dist = utils.haversine(lat, lon, n['latitude'], n['longitude'])
-                nearby.append(dict(n) | {'distance_km': dist})
+                if dist > 0:
+                    nearby.append(dict(n) | {'distance_km': dist})
         moon   = utils.moon_phase()
         season = utils.current_season(lat)
 
@@ -269,7 +326,7 @@ def city_sunrise_page(cslug, rslug, cityslug):
     lat, lon, has_coords = d['lat'], d['lon'], d['has_coords']
     sun_calendar = utils.build_sun_calendar(lat, lon) if has_coords else []
     season       = utils.current_season(lat) if has_coords else None
-    ann_daylight = utils.annual_daylight(lat, lon) if has_coords else []
+    ann_daylight = utils.annual_daylight(lat, lon, d['geo']['tz_offset'] or 0) if has_coords else []
     city_row = d['city']
     cn, co = city_row['cityname'], city_row['countryname']
     return template('city_sunrise',
@@ -324,7 +381,7 @@ def city_daylight_page(cslug, rslug, cityslug):
     if d is None:
         abort(404)
     lat, lon, has_coords = d['lat'], d['lon'], d['has_coords']
-    ann_daylight = utils.annual_daylight(lat, lon) if has_coords else []
+    ann_daylight = utils.annual_daylight(lat, lon, d['geo']['tz_offset'] or 0) if has_coords else []
     city_row = d['city']
     cn, co = city_row['cityname'], city_row['countryname']
     return template('city_daylight',
@@ -348,7 +405,8 @@ def city_nearby_page(cslug, rslug, cityslug):
         for n in nearby_raw:
             if n['latitude'] and n['longitude']:
                 dist = utils.haversine(lat, lon, n['latitude'], n['longitude'])
-                nearby.append(dict(n) | {'distance_km': dist})
+                if dist > 0:
+                    nearby.append(dict(n) | {'distance_km': dist})
     cn, co, rn = city_row['cityname'], city_row['countryname'], city_row['stateprovince']
     nearest = nearby[0]['cityname'] if nearby else None
     nearest_km = round(nearby[0]['distance_km']) if nearby else None
@@ -361,9 +419,14 @@ def city_nearby_page(cslug, rslug, cityslug):
                                 + f'Full list of cities near {cn} with distances.')
 
 
+# ── WSGI app (con gzip) ───────────────────────────────────────────
+# Usato da gunicorn/uwsgi: gunicorn "app:application"
+application = GzipMiddleware(app)
+
+
 # ── Avvio ─────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('DEBUG', 'false').lower() == 'true'
-    run(app, host='0.0.0.0', port=port, debug=debug, reloader=debug)
+    run(application, host='0.0.0.0', port=port, debug=debug, reloader=debug)

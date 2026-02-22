@@ -259,6 +259,14 @@
         % end
       </a>
 
+      % if nearby:
+      <a class="explore-card" href="{{city_url}}nearby/">
+        <span class="explore-icon">📍</span>
+        <span class="explore-label">Nearby Cities</span>
+        <span class="explore-value">Closest: {{nearby[0]['cityname']}} ({{round(nearby[0]['distance_km'])}} km)</span>
+      </a>
+      % end
+
     </div>
   </section>
   % end
@@ -369,28 +377,5 @@
     </table>
   </section>
 
-  <!-- ── Nearby Cities ────────────────────────────────────────── -->
-  % if nearby:
-  <section class="info-box nearby" id="nearby">
-    <h2>Cities near {{city['cityname']}}, {{city['countryname']}}</h2>
-    <p class="section-intro">
-      The following cities are located closest to
-      <strong>{{city['cityname']}}</strong>, sorted by straight-line distance.
-    </p>
-    <ul class="nearby-list">
-      % for n in nearby:
-      <li>
-        <a href="/country/{{n['slug_country']}}/{{n['slug_region']}}/{{n['slug_city']}}/">
-          {{n['cityname']}}
-        </a>
-        <span class="country-tag">{{n['countryname']}}</span>
-        % if n.get('distance_km'):
-        <span class="dist-tag">{{n['distance_km']}} km</span>
-        % end
-      </li>
-      % end
-    </ul>
-  </section>
-  % end
 
 </article>
