@@ -1,6 +1,8 @@
 import unicodedata
 import re
 import math
+import json
+import os
 from datetime import datetime
 
 
@@ -193,19 +195,77 @@ def get_phone_prefix(code):
     return PHONE_MAP.get((code or '').upper(), '')
 
 
+def _parse_tz_offset(offset_str):
+    """Converte '+05:30' in 5.5 o '-04:00' / '−04:00' in -4.0.
+    Gestisce sia il trattino ASCII (-) che il segno meno Unicode (−)."""
+    offset_str = offset_str.replace('\u2212', '-')  # segno meno Unicode → ASCII
+    sign = -1 if offset_str.startswith('-') else 1
+    parts = offset_str.lstrip('+-').split(':')
+    hours = int(parts[0])
+    minutes = int(parts[1]) if len(parts) > 1 else 0
+    return sign * (hours + minutes / 60)
+
+
+def _tz_offset_to_label(offset):
+    """Converte 5.5 in 'UTC+5:30', -4.0 in 'UTC-4', 0 in 'UTC+0'."""
+    sign = '+' if offset >= 0 else '-'
+    total_minutes = round(abs(offset) * 60)
+    h, m = divmod(total_minutes, 60)
+    if m:
+        return f'UTC{sign}{h}:{m:02d}'
+    elif offset == 0:
+        return 'UTC+0'
+    else:
+        return f'UTC{sign}{h}'
+
+
+def _load_tz_lookup():
+    """Carica timezone-info.json e costruisce countrycode -> [(offset_float, label)]
+    considerando solo le voci canoniche."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'timezone-info.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    lookup = {}
+    for tz in data:
+        if tz.get('type') != 'canonical':
+            continue
+        offset = _parse_tz_offset(tz.get('utcOffsetStandard', '+00:00'))
+        label = _tz_offset_to_label(offset)
+        for cc in tz.get('countryCodes', []):
+            lookup.setdefault(cc, []).append((offset, label))
+    return lookup
+
+
+_TZ_LOOKUP = _load_tz_lookup()
+
+
+def lookup_timezone(countrycode, lon):
+    """
+    Restituisce (offset_float, label_str) per la città.
+    - Paese con un solo fuso: risultato esatto dal JSON.
+    - Paese con più fusi: usa la longitudine per scegliere il fuso reale più vicino.
+    - Fallback: stima geometrica lon/15.
+    """
+    tzs = _TZ_LOOKUP.get(countrycode or '', [])
+    if not tzs:
+        return approx_timezone(lon)
+    if len(tzs) == 1:
+        return tzs[0]
+    geo_offset = lon / 15
+    return min(tzs, key=lambda x: abs(x[0] - geo_offset))
+
+
 def approx_timezone(lon):
     """
     Stima l'offset UTC in ore dalla longitudine.
-    Restituisce (offset_int, label_str), es. (1, 'UTC+1').
+    Restituisce (offset_float, label_str), es. (1, 'UTC+1').
+    Usata come fallback quando il paese non è nel dataset.
     """
     offset = round(lon / 15)
-    if offset == 0:
-        label = 'UTC+0'
-    elif offset > 0:
-        label = f'UTC+{offset}'
-    else:
-        label = f'UTC{offset}'
-    return offset, label
+    return offset, _tz_offset_to_label(offset)
 
 
 def get_hemisphere(lat, lon):

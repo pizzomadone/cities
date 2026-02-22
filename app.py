@@ -242,7 +242,7 @@ def _city_base(cslug, rslug, cityslug):
 
     if has_coords:
         lat_dms, lon_dms = utils.format_coords(lat, lon)
-        geo['tz_offset'], geo['tz_label'] = utils.approx_timezone(lon)
+        geo['tz_offset'], geo['tz_label'] = utils.lookup_timezone(city_row['countrycode'], lon)
         geo['hemisphere_ns'], geo['hemisphere_ew'] = utils.get_hemisphere(lat, lon)
         geo['equator_km'] = utils.distance_from_equator(lat)
         anti_lat, anti_lon = utils.antipode(lat, lon)
