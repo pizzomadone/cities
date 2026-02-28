@@ -111,7 +111,8 @@ def get_city(country_slug, region_slug, city_slug):
         return conn.execute('''
             SELECT cityid, cityname, stateprovince, countryname, countrycode,
                    continent, latitude, longitude,
-                   slug_city, slug_country, slug_region
+                   slug_city, slug_country, slug_region,
+                   population, elevation_m
             FROM   cities
             WHERE  slug_country = ? AND slug_region = ? AND slug_city = ?
             LIMIT  1

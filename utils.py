@@ -328,6 +328,30 @@ def city_intro_paragraph(city_row, geo, lat_dms, lon_dms):
         zone = "the polar region, with extreme daylight variation between seasons"
     parts.append(f"At this latitude, {name} falls within {zone}.")
 
+    # Popolazione
+    population = city_row['population'] if 'population' in city_row.keys() else None
+    if population and population > 0:
+        if population >= 1_000_000:
+            pop_str = f"{population / 1_000_000:.1f} million"
+        else:
+            pop_str = f"{population:,}"
+        parts.append(f"The city is home to approximately {pop_str} inhabitants.")
+
+    # Altitudine
+    elevation_m = city_row['elevation_m'] if 'elevation_m' in city_row.keys() else None
+    if elevation_m is not None:
+        ft = round(elevation_m * 3.28084)
+        if elevation_m < 0:
+            parts.append(
+                f"{name} lies {abs(elevation_m):,}\u00a0m ({abs(ft):,}\u00a0ft) below sea level."
+            )
+        elif elevation_m == 0:
+            parts.append(f"{name} sits essentially at sea level.")
+        else:
+            parts.append(
+                f"It sits at an elevation of {elevation_m:,}\u00a0m ({ft:,}\u00a0ft) above sea level."
+            )
+
     return " ".join(parts)
 
 

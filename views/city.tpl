@@ -85,6 +85,13 @@
         <th>Continent</th>
         <td colspan="2">{{city['continent']}}</td>
       </tr>
+      % if city['elevation_m'] is not None:
+      % _ft = round(city['elevation_m'] * 3.28084)
+      <tr>
+        <th>Elevation</th>
+        <td colspan="2">{{'{:,}'.format(city['elevation_m'])}} m &nbsp;/&nbsp; {{'{:,}'.format(_ft)}} ft</td>
+      </tr>
+      % end
     </table>
     % else:
     <p>Coordinates not available for this location.</p>
@@ -378,6 +385,12 @@
           </a>
         </td>
       </tr>
+      % if city['population']:
+      <tr>
+        <th>Population</th>
+        <td colspan="2">≈ {{'{:,}'.format(city['population'])}}</td>
+      </tr>
+      % end
     </table>
   </section>
 
