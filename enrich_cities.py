@@ -33,9 +33,15 @@ GEONAMES_URL = 'https://download.geonames.org/export/dump/cities500.zip'
 GEONAMES_ZIP = 'cities500.zip'
 GEONAMES_TXT = 'cities500.txt'
 
-# Raggio massimo per il matching (km).
-# 50 km bilancia precisione e copertura per città ravvicinate.
+# Raggio di ricerca: quanto lontano cercare un punto GeoNames.
 MAX_MATCH_KM = 50
+
+# Soglia "stesso luogo": entro questa distanza il punto GeoNames è
+# considerato lo stesso insediamento → popolazione e DEM sono validi.
+# Oltre questa soglia l'entry potrebbe essere un fiume, un lago, una
+# cima o qualsiasi POI non abitato: non gli assegniamo la popolazione
+# né l'altitudine della città più vicina (che sarebbe fuorviante).
+MAX_SAME_PLACE_KM = 10
 
 BATCH_SIZE = 2_000
 
@@ -109,6 +115,14 @@ def find_match(index, lat, lon, cc):
     """
     Restituisce (pop, dem) del punto GeoNames più vicino nello stesso paese,
     entro MAX_MATCH_KM km. Ritorna None se non trovato.
+
+    Sia pop che dem vengono restituiti come None se la distanza supera
+    MAX_SAME_PLACE_KM: oltre quella soglia il punto GeoNames non è lo stesso
+    insediamento, quindi la sua popolazione e il suo DEM non sono valori
+    applicabili all'entry corrente (che potrebbe essere un fiume, un lago,
+    una vetta, ecc.).
+    SRTM, essendo calcolato sulle coordinate esatte, rimane invece sempre
+    valido indipendentemente dalla distanza dal punto GeoNames.
     """
     cc_idx = index.get(cc)
     if not cc_idx:
@@ -124,9 +138,20 @@ def find_match(index, lat, lon, cc):
                 d = haversine(lat, lon, g_lat, g_lon)
                 if d < best_dist:
                     best_dist = d
-                    best = (pop, dem)
+                    best = (pop, dem, d)
 
-    return best
+    if best is None:
+        return None
+
+    pop, dem, dist = best
+
+    # Oltre MAX_SAME_PLACE_KM il punto GeoNames non coincide con la nostra
+    # entry: azzeriamo i valori derivati da quel punto specifico.
+    if dist > MAX_SAME_PLACE_KM:
+        pop = None
+        dem = None
+
+    return pop, dem
 
 
 # ── DB helpers ────────────────────────────────────────────────────
