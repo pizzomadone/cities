@@ -385,7 +385,7 @@
           </a>
         </td>
       </tr>
-      % if city['population']:
+      % if city['is_populated_place'] and city['population']:
       <tr>
         <th>Population</th>
         <td colspan="2">≈ {{'{:,}'.format(city['population'])}}</td>

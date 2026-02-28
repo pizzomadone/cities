@@ -112,7 +112,7 @@ def get_city(country_slug, region_slug, city_slug):
             SELECT cityid, cityname, stateprovince, countryname, countrycode,
                    continent, latitude, longitude,
                    slug_city, slug_country, slug_region,
-                   population, elevation_m
+                   population, elevation_m, is_populated_place
             FROM   cities
             WHERE  slug_country = ? AND slug_region = ? AND slug_city = ?
             LIMIT  1

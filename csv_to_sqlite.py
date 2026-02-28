@@ -57,7 +57,8 @@ def init_db(conn):
             slug_country  TEXT,
             slug_region   TEXT,
             population    INTEGER,
-            elevation_m   INTEGER
+            elevation_m   INTEGER,
+            is_populated_place INTEGER DEFAULT 0
         )
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_country ON cities(slug_country)')
@@ -83,7 +84,7 @@ def run():
     skipped = 0
 
     INSERT = '''
-        INSERT OR IGNORE INTO cities VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT OR IGNORE INTO cities VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     '''
 
     with open(CSV_PATH, encoding='utf-8') as f:
@@ -109,8 +110,9 @@ def run():
                 slugify(r['cityname']),
                 slugify(r['countryname']),
                 slugify(r['StateProvinceName']),
-                None,  # population  – filled by enrich_cities.py
-                None,  # elevation_m – filled by enrich_cities.py
+                None,  # population         – filled by enrich_cities.py
+                None,  # elevation_m        – filled by enrich_cities.py
+                0,     # is_populated_place – filled by enrich_cities.py
             ))
 
             if len(batch) >= BATCH:

@@ -328,9 +328,11 @@ def city_intro_paragraph(city_row, geo, lat_dms, lon_dms):
         zone = "the polar region, with extreme daylight variation between seasons"
     parts.append(f"At this latitude, {name} falls within {zone}.")
 
-    # Popolazione
-    population = city_row['population'] if 'population' in city_row.keys() else None
-    if population and population > 0:
+    # Popolazione – solo per centri abitati (flag settato dall'enrichment)
+    keys = city_row.keys()
+    is_populated_place = city_row['is_populated_place'] if 'is_populated_place' in keys else 0
+    population         = city_row['population']         if 'population'         in keys else None
+    if is_populated_place and population and population > 0:
         if population >= 1_000_000:
             pop_str = f"{population / 1_000_000:.1f} million"
         else:

@@ -147,11 +147,13 @@ def find_match(index, lat, lon, cc):
 
     # Oltre MAX_SAME_PLACE_KM il punto GeoNames non coincide con la nostra
     # entry: azzeriamo i valori derivati da quel punto specifico.
-    if dist > MAX_SAME_PLACE_KM:
+    is_same_place = dist <= MAX_SAME_PLACE_KM
+
+    if not is_same_place:
         pop = None
         dem = None
 
-    return pop, dem
+    return pop, dem, is_same_place
 
 
 # ── DB helpers ────────────────────────────────────────────────────
@@ -166,6 +168,10 @@ def ensure_columns(conn):
     if 'elevation_m' not in existing:
         conn.execute('ALTER TABLE cities ADD COLUMN elevation_m INTEGER')
         print('Colonna elevation_m aggiunta.')
+        changed = True
+    if 'is_populated_place' not in existing:
+        conn.execute('ALTER TABLE cities ADD COLUMN is_populated_place INTEGER DEFAULT 0')
+        print('Colonna is_populated_place aggiunta.')
         changed = True
     if changed:
         conn.commit()
@@ -213,31 +219,35 @@ def run(db_path, geonames_txt, use_srtm, dry_run):
         lon = row['longitude']
         cc  = (row['countrycode'] or '').upper()
 
-        pop  = None
-        elev = None
+        pop             = None
+        elev            = None
+        is_pop_place    = 0
 
         # 1. GeoNames → popolazione + dem come fallback altitudine
         match = find_match(geonames, lat, lon, cc)
         if match:
-            g_pop, g_dem = match
-            if g_pop and g_pop > 0:
-                pop = g_pop
-                matched_pop += 1
+            g_pop, g_dem, is_same_place = match
+            if is_same_place:
+                is_pop_place = 1
+                if g_pop and g_pop > 0:
+                    pop = g_pop
+                    matched_pop += 1
             elev = g_dem  # fallback, può rimanere None
 
-        # 2. srtm.py → altitudine precisa (sovrascrive dem GeoNames)
+        # 2. srtm.py → altitudine precisa sulle coordinate esatte (sovrascrive dem GeoNames).
+        # Valida per qualsiasi feature geografica (città, fiume, cima, ecc.).
         if srtm_data:
             s = srtm_data.get_elevation(lat, lon)
             if s is not None:
                 elev = s
                 matched_elev += 1
 
-        updates.append((pop, elev, cid))
+        updates.append((pop, elev, is_pop_place, cid))
 
         if i % BATCH_SIZE == 0 or i == total:
             if not dry_run:
                 conn.executemany(
-                    'UPDATE cities SET population=?, elevation_m=? WHERE cityid=?',
+                    'UPDATE cities SET population=?, elevation_m=?, is_populated_place=? WHERE cityid=?',
                     updates
                 )
                 conn.commit()
