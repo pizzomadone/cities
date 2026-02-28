@@ -268,6 +268,69 @@ def approx_timezone(lon):
     return offset, _tz_offset_to_label(offset)
 
 
+def city_intro_paragraph(city_row, geo, lat_dms, lon_dms):
+    """
+    Genera un paragrafo descrittivo unico per ogni pagina città.
+    Riduce il rischio thin-content aggiungendo testo naturale e vario
+    basato sui dati calcolati (coordinate, emisfero, fuso, luce solare, clima).
+    """
+    name        = city_row['cityname']
+    region_name = city_row['stateprovince']
+    country     = city_row['countryname']
+    continent   = city_row['continent']
+    lat         = city_row['latitude']
+
+    ns      = geo['hemisphere_ns']   # 'Northern' / 'Southern'
+    ew      = geo['hemisphere_ew']   # 'Eastern'  / 'Western'
+    eq_km   = geo['equator_km']      # int
+    tz      = geo['tz_label']        # es. 'UTC+1'
+    sunrise = geo['sunrise']         # es. '06:12' o None
+    sunset  = geo['sunset']          # es. '18:43' o None
+    day_len = geo['day_length']      # es. '12h 31m' o None
+
+    parts = []
+
+    # Frase 1 — collocazione geografica
+    parts.append(
+        f"{name} is a city in {region_name}, {country}, located in {continent}."
+    )
+
+    # Frase 2 — coordinate e posizione rispetto all'equatore
+    ns_dir = "north" if ns == 'Northern' else "south"
+    parts.append(
+        f"Its geographic coordinates are {lat_dms} latitude and {lon_dms} longitude, "
+        f"placing it in the {ns} and {ew} hemispheres, "
+        f"approximately {eq_km:,}\u00a0km {ns_dir} of the equator."
+    )
+
+    # Frase 3 — fuso orario + luce solare oggi
+    if tz and sunrise and sunset and day_len:
+        parts.append(
+            f"The city observes the {tz} time zone; today the sun rises at {sunrise}\u00a0UTC "
+            f"and sets at {sunset}\u00a0UTC, providing around {day_len} of daylight."
+        )
+    elif tz:
+        parts.append(f"The city observes the {tz} time zone.")
+
+    # Frase 4 — zona climatica in base alla latitudine
+    abs_lat = abs(lat)
+    if abs_lat < 10:
+        zone = "the equatorial belt, with warm and humid conditions throughout the year"
+    elif abs_lat < 23.5:
+        zone = "the tropics, with consistently warm temperatures year-round"
+    elif abs_lat < 35:
+        zone = "the subtropics, with hot summers and mild winters"
+    elif abs_lat < 55:
+        zone = "the temperate zone, experiencing four distinct seasons"
+    elif abs_lat < 66.5:
+        zone = "the subarctic region, with cold winters and brief summers"
+    else:
+        zone = "the polar region, with extreme daylight variation between seasons"
+    parts.append(f"At this latitude, {name} falls within {zone}.")
+
+    return " ".join(parts)
+
+
 def get_hemisphere(lat, lon):
     """
     Restituisce (emisfero_NS, emisfero_EW), es. ('Northern', 'Eastern').

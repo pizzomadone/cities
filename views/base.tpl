@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{title}}</title>
   <meta name="description" content="{{description}}">
+  % if defined('noindex') and noindex:
+  <meta name="robots" content="noindex, follow">
+  % end
   % if defined('canonical'):
   <link rel="canonical" href="{{canonical}}">
   % end

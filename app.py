@@ -181,6 +181,7 @@ def region(cslug, rslug):
                     region=region_row,
                     cities=cities,
                     pag=pag,
+                    noindex=(total < 3),
                     base_url=BASE_URL,
                     title=f'Cities in {region_name}, {country_name} – Full List with Coordinates',
                     description=f'Browse all {total} cities in {region_name}, {country_name}. '
@@ -251,12 +252,19 @@ def _city_base(cslug, rslug, cityslug):
         geo['sunrise'], geo['sunset'], geo['day_length'], geo['sun_date'] = \
             utils.sunrise_sunset(lat, lon)
 
+    intro_paragraph = (
+        utils.city_intro_paragraph(city_row, geo, lat_dms, lon_dms)
+        if has_coords else None
+    )
+
     return {
         'city': city_row,
         'lat': lat, 'lon': lon, 'has_coords': has_coords,
         'lat_dms': lat_dms, 'lon_dms': lon_dms,
         'geo': geo,
         'country_info': utils.get_country_info(city_row['countrycode']),
+        'intro_paragraph': intro_paragraph,
+        'noindex': not has_coords,
         'base_url': BASE_URL,
     }
 

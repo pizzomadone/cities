@@ -53,6 +53,10 @@
     <a href="/continent/{{cslug_cont}}/">{{city['continent']}}</a>
   </p>
 
+  % if defined('intro_paragraph') and intro_paragraph:
+  <p class="city-intro">{{intro_paragraph}}</p>
+  % end
+
   <!-- ── GPS Coordinates ─────────────────────────────────────── -->
   <section class="info-box" id="coordinates">
     <h2>GPS Coordinates of {{city['cityname']}}, {{city['countryname']}}</h2>
