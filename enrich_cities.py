@@ -177,7 +177,18 @@ def ensure_columns(conn):
         conn.commit()
 
 
-# ── Core ──────────────────────────────────────────────────────────
+def _fmt_duration(seconds):
+    """Formatta una durata in secondi come stringa leggibile (es. '2h 34m 12s')."""
+    seconds = int(seconds)
+    h, remainder = divmod(seconds, 3600)
+    m, s = divmod(remainder, 60)
+    if h:
+        return f'{h}h {m:02d}m {s:02d}s'
+    if m:
+        return f'{m}m {s:02d}s'
+    return f'{s}s'
+
+
 
 def run(db_path, geonames_txt, use_srtm, dry_run):
     conn = sqlite3.connect(db_path)
@@ -258,13 +269,15 @@ def run(db_path, geonames_txt, use_srtm, dry_run):
             print(
                 f'  {i:>8,}/{total:,}  '
                 f'pop:{matched_pop:,}  elev:{matched_elev:,}  '
-                f'{speed:.0f} città/s  ETA {eta:.0f}s',
+                f'{speed:.0f} città/s  '
+                f'trascorso {_fmt_duration(elapsed)}  '
+                f'ETA {_fmt_duration(eta)}',
                 end='\r'
             )
 
     print()
     elapsed = time.time() - t0
-    print(f'\nCompletato in {elapsed:.1f}s')
+    print(f'\nCompletato in {_fmt_duration(elapsed)}')
     print(f'  Popolazione trovata : {matched_pop:,} / {total:,} '
           f'({matched_pop/total*100:.1f}%)')
     print(f'  Altitudine trovata  : {matched_elev:,} / {total:,} '
