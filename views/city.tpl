@@ -358,6 +358,12 @@
       % else:
       cities
       % end
+      and <strong>{{region_poi_count}}</strong>
+      % if region_poi_count == 1:
+      point of interest
+      % else:
+      points of interest
+      % end
       in our database.
       <strong>{{city['countryname']}}</strong> as a whole has
       <strong>{{country_city_count}}</strong>
@@ -365,6 +371,12 @@
       city
       % else:
       cities
+      % end
+      and <strong>{{country_poi_count}}</strong>
+      % if country_poi_count == 1:
+      point of interest
+      % else:
+      points of interest
       % end
       listed across all regions.
     </p>
@@ -378,12 +390,20 @@
         </td>
       </tr>
       <tr>
+        <th>Points of interest in {{city['stateprovince']}}</th>
+        <td colspan="2">{{region_poi_count}}</td>
+      </tr>
+      <tr>
         <th>Cities in {{city['countryname']}}</th>
         <td colspan="2">
           <a href="/country/{{city['slug_country']}}/">
             {{country_city_count}} cities
           </a>
         </td>
+      </tr>
+      <tr>
+        <th>Points of interest in {{city['countryname']}}</th>
+        <td colspan="2">{{country_poi_count}}</td>
       </tr>
       % if city['is_populated_place'] and city['population']:
       <tr>

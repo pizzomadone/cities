@@ -291,8 +291,8 @@ def city(cslug, rslug, cityslug):
         moon   = utils.moon_phase()
         season = utils.current_season(lat)
 
-    region_city_count  = db.get_region_city_count(cslug, rslug)
-    country_city_count = db.get_country_city_count(cslug)
+    region_city_count, region_poi_count   = db.get_region_city_count(cslug, rslug)
+    country_city_count, country_poi_count = db.get_country_city_count(cslug)
 
     city_name, region_name, country_name = \
         city_row['cityname'], city_row['stateprovince'], city_row['countryname']
@@ -303,7 +303,9 @@ def city(cslug, rslug, cityslug):
                     moon=moon,
                     season=season,
                     region_city_count=region_city_count,
+                    region_poi_count=region_poi_count,
                     country_city_count=country_city_count,
+                    country_poi_count=country_poi_count,
                     title=f'{city_name}, {region_name}, {country_name} – '
                           f'GPS Coordinates, Map, Time Zone & Info',
                     description=f'{city_name} is a city in {region_name}, {country_name}. '

@@ -194,21 +194,31 @@ def get_city_count():
 
 
 def get_region_city_count(country_slug, region_slug):
-    """Numero di città in una regione specifica."""
+    """Numero di città e POI in una regione specifica."""
     with get_conn() as conn:
-        return conn.execute(
-            f"SELECT COUNT(*) FROM cities WHERE slug_country = ? AND slug_region = ? AND cityname != '' AND {_IS_CITY}",
+        row = conn.execute(
+            f"""SELECT
+                    SUM(CASE WHEN {_IS_CITY} THEN 1 ELSE 0 END) AS cities,
+                    SUM(CASE WHEN is_populated_place = 0 THEN 1 ELSE 0 END) AS pois
+                FROM cities
+                WHERE slug_country = ? AND slug_region = ? AND cityname != ''""",
             (country_slug, region_slug)
-        ).fetchone()[0]
+        ).fetchone()
+        return int(row['cities'] or 0), int(row['pois'] or 0)
 
 
 def get_country_city_count(country_slug):
-    """Numero totale di città in un paese."""
+    """Numero totale di città e POI in un paese."""
     with get_conn() as conn:
-        return conn.execute(
-            f"SELECT COUNT(*) FROM cities WHERE slug_country = ? AND cityname != '' AND {_IS_CITY}",
+        row = conn.execute(
+            f"""SELECT
+                    SUM(CASE WHEN {_IS_CITY} THEN 1 ELSE 0 END) AS cities,
+                    SUM(CASE WHEN is_populated_place = 0 THEN 1 ELSE 0 END) AS pois
+                FROM cities
+                WHERE slug_country = ? AND cityname != ''""",
             (country_slug,)
-        ).fetchone()[0]
+        ).fetchone()
+        return int(row['cities'] or 0), int(row['pois'] or 0)
 
 
 def search_cities(query, limit=30):
