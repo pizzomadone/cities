@@ -28,7 +28,6 @@ import os
 import sqlite3
 import sys
 import time
-import unicodedata
 import urllib.request
 import zipfile
 
@@ -40,22 +39,6 @@ GEONAMES_TXT = 'cities500.txt'
 MAX_SAME_PLACE_KM = 10
 
 BATCH_SIZE = 2_000
-
-
-# ── Normalizzazione nomi ──────────────────────────────────────────
-
-def _normalize(name):
-    """Minuscolo, senza diacritici, senza punteggiatura."""
-    nfkd = unicodedata.normalize('NFKD', name.lower())
-    ascii_str = ''.join(c for c in nfkd if not unicodedata.combining(c))
-    return ''.join(c for c in ascii_str if c.isalnum() or c.isspace()).strip()
-
-
-def _name_match(g_name_norm, db_name_norm):
-    """True se i nomi normalizzati si sovrappongono (substring bidirezionale)."""
-    if not g_name_norm or not db_name_norm:
-        return False
-    return g_name_norm in db_name_norm or db_name_norm in g_name_norm
 
 
 # ── Geometria ─────────────────────────────────────────────────────
@@ -96,52 +79,37 @@ def download_geonames(zip_path):
 def build_db_index(rows):
     index = {}
     for row in rows:
-        lat  = row['latitude']
-        lon  = row['longitude']
-        cid  = row['cityid']
-        cc   = (row['countrycode'] or '').upper()
-        name = _normalize(row['cityname'] or '')
+        lat = row['latitude']
+        lon = row['longitude']
+        cid = row['cityid']
+        cc  = (row['countrycode'] or '').upper()
         cell = (int(lat), int(lon))
         cc_idx = index.setdefault(cc, {})
-        cc_idx.setdefault(cell, []).append((lat, lon, cid, name))
+        cc_idx.setdefault(cell, []).append((lat, lon, cid))
     return index
 
 
-def find_db_entry(db_index, g_lat, g_lon, g_cc, g_name_norm):
+def find_db_entry(db_index, g_lat, g_lon, g_cc):
     """
-    Dato un punto GeoNames (lat, lon, country, name_norm), restituisce
-    (cityid, dist_km) dell'entry DB più adatta entro MAX_SAME_PLACE_KM.
-
-    Strategia:
-      1. Tra tutti i candidati nel raggio, cerca il più vicino il cui nome
-         corrisponde (substring bidirezionale) al nome GeoNames.
-      2. Se nessun candidato ha nome simile, usa il più vicino per distanza.
+    Dato un punto GeoNames (lat, lon, country), restituisce (cityid, dist_km)
+    dell'entry DB più vicina entro MAX_SAME_PLACE_KM, oppure None.
     """
     cc_idx = db_index.get(g_cc)
     if not cc_idx:
         return None
 
     ilat, ilon = int(g_lat), int(g_lon)
-    best_dist      = MAX_SAME_PLACE_KM + 1
-    best_cid       = None
-    best_name_dist = MAX_SAME_PLACE_KM + 1
-    best_name_cid  = None
+    best_dist = MAX_SAME_PLACE_KM + 1
+    best_cid  = None
 
     for dlat in (-1, 0, 1):
         for dlon in (-1, 0, 1):
-            for lat, lon, cid, db_name in cc_idx.get((ilat + dlat, ilon + dlon), ()):
+            for lat, lon, cid in cc_idx.get((ilat + dlat, ilon + dlon), ()):
                 d = haversine(g_lat, g_lon, lat, lon)
-                if d >= MAX_SAME_PLACE_KM:
-                    continue
                 if d < best_dist:
                     best_dist = d
                     best_cid  = cid
-                if _name_match(g_name_norm, db_name) and d < best_name_dist:
-                    best_name_dist = d
-                    best_name_cid  = cid
 
-    if best_name_cid is not None:
-        return (best_name_cid, best_name_dist)
     return (best_cid, best_dist) if best_cid is not None else None
 
 
@@ -193,7 +161,7 @@ def run_population(conn, geonames_txt, dry_run):
     t0 = time.time()
 
     rows = conn.execute(
-        'SELECT cityid, cityname, latitude, longitude, countrycode FROM cities '
+        'SELECT cityid, latitude, longitude, countrycode FROM cities '
         'WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
     ).fetchall()
     total_db = len(rows)
@@ -214,16 +182,15 @@ def run_population(conn, geonames_txt, dry_run):
             if len(fields) < 17 or fields[6] != 'P':
                 continue
             try:
-                g_lat  = float(fields[4])
-                g_lon  = float(fields[5])
-                g_pop  = int(fields[14]) if fields[14] else 0
-                g_cc   = fields[8].upper()
-                g_name = _normalize(fields[1])
+                g_lat = float(fields[4])
+                g_lon = float(fields[5])
+                g_pop = int(fields[14]) if fields[14] else 0
+                g_cc  = fields[8].upper()
             except (ValueError, IndexError):
                 continue
 
             n_geonames += 1
-            result = find_db_entry(db_index, g_lat, g_lon, g_cc, g_name)
+            result = find_db_entry(db_index, g_lat, g_lon, g_cc)
             if result:
                 cid, dist = result
                 if cid not in city_matches or dist < city_matches[cid][1]:
