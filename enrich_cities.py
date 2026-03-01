@@ -1,16 +1,18 @@
 """
 Arricchisce cities.db con popolazione e altitudine.
 
-  Popolazione  →  GeoNames cities500.txt  (match per coordinate + country)
-  Altitudine   →  srtm.py                 (tile SRTM NASA, ~90 m risoluzione)
-                  fallback: campo 'dem' di GeoNames (GTOPO30, ~1 km)
+  Popolazione  →  GeoNames cities500.txt  (matching INVERSO: per ogni città
+                  GeoNames trova l'entry DB più vicina → quella e solo quella
+                  diventa un centro abitato; musei, fiumi, ecc. rimangono POI)
+  Altitudine   →  srtm.py  (tile SRTM NASA, ~90 m risoluzione, coordinate esatte)
 
 Uso:
     python enrich_cities.py [opzioni]
 
     --db        cities.db       path al database SQLite
     --geonames  cities500.txt   path al dump GeoNames (scaricato se assente)
-    --no-srtm                   salta srtm.py (usa solo il dem di GeoNames)
+    --no-srtm                   salta SRTM: ricalcola solo popolazione/flag,
+                                lascia elevation_m intatta
     --dry-run                   stampa statistiche senza scrivere nel DB
 
 Dipendenze:
@@ -30,17 +32,10 @@ import urllib.request
 import zipfile
 
 GEONAMES_URL = 'https://download.geonames.org/export/dump/cities500.zip'
-GEONAMES_ZIP = 'cities500.zip'
 GEONAMES_TXT = 'cities500.txt'
 
-# Raggio di ricerca: quanto lontano cercare un punto GeoNames.
-MAX_MATCH_KM = 50
-
-# Soglia "stesso luogo": entro questa distanza il punto GeoNames è
-# considerato lo stesso insediamento → popolazione e DEM sono validi.
-# Oltre questa soglia l'entry potrebbe essere un fiume, un lago, una
-# cima o qualsiasi POI non abitato: non gli assegniamo la popolazione
-# né l'altitudine della città più vicina (che sarebbe fuorviante).
+# Distanza massima entro cui un'entry DB può essere abbinata a una città GeoNames.
+# Oltre questa soglia l'entry è trattata come POI.
 MAX_SAME_PLACE_KM = 10
 
 BATCH_SIZE = 2_000
@@ -74,86 +69,48 @@ def download_geonames(zip_path):
     print()
 
 
-# ── Indice spaziale GeoNames ───────────────────────────────────────
+# ── Indice spaziale delle entry DB ────────────────────────────────
 #
-# Struttura:  { country_code: { (int_lat, int_lon): [(lat, lon, pop, dem)] } }
+# Struttura: { country_code: { (int_lat, int_lon): [(lat, lon, cityid)] } }
 #
-# La cella (int_lat, int_lon) copre un grado quadrato (~111 km lato).
-# Il matching cerca nelle 9 celle adiacenti (±1°), garantendo copertura
-# fino a ~157 km dalla cella centrale — ben oltre MAX_MATCH_KM=50 km.
+# Usato per il matching INVERSO: dato un punto GeoNames, trova l'entry
+# DB più vicina nello stesso paese entro MAX_SAME_PLACE_KM.
 
-def load_geonames(txt_path):
-    print(f'Caricamento {txt_path} …')
-    index = {}   # cc → { (ilat, ilon): [(lat, lon, pop, dem)] }
-    n = 0
-    with open(txt_path, encoding='utf-8') as f:
-        for line in f:
-            fields = line.rstrip('\n').split('\t')
-            if len(fields) < 17:
-                continue
-            if fields[6] != 'P':        # solo centri abitati
-                continue
-            try:
-                lat = float(fields[4])
-                lon = float(fields[5])
-                pop = int(fields[14]) if fields[14] else 0
-                dem = int(fields[16]) if fields[16] else None
-                cc  = fields[8].upper()
-            except (ValueError, IndexError):
-                continue
-
-            cell = (int(lat), int(lon))
-            cc_idx = index.setdefault(cc, {})
-            cc_idx.setdefault(cell, []).append((lat, lon, pop, dem))
-            n += 1
-
-    print(f'  {n:,} centri abitati  ({len(index)} paesi)')
+def build_db_index(rows):
+    index = {}
+    for row in rows:
+        lat = row['latitude']
+        lon = row['longitude']
+        cid = row['cityid']
+        cc  = (row['countrycode'] or '').upper()
+        cell = (int(lat), int(lon))
+        cc_idx = index.setdefault(cc, {})
+        cc_idx.setdefault(cell, []).append((lat, lon, cid))
     return index
 
 
-def find_match(index, lat, lon, cc):
+def find_db_entry(db_index, g_lat, g_lon, g_cc):
     """
-    Restituisce (pop, dem) del punto GeoNames più vicino nello stesso paese,
-    entro MAX_MATCH_KM km. Ritorna None se non trovato.
-
-    Sia pop che dem vengono restituiti come None se la distanza supera
-    MAX_SAME_PLACE_KM: oltre quella soglia il punto GeoNames non è lo stesso
-    insediamento, quindi la sua popolazione e il suo DEM non sono valori
-    applicabili all'entry corrente (che potrebbe essere un fiume, un lago,
-    una vetta, ecc.).
-    SRTM, essendo calcolato sulle coordinate esatte, rimane invece sempre
-    valido indipendentemente dalla distanza dal punto GeoNames.
+    Dato un punto GeoNames (lat, lon, country), restituisce (cityid, dist_km)
+    dell'entry DB più vicina entro MAX_SAME_PLACE_KM, oppure None.
     """
-    cc_idx = index.get(cc)
+    cc_idx = db_index.get(g_cc)
     if not cc_idx:
         return None
 
-    ilat, ilon = int(lat), int(lon)
-    best_dist = MAX_MATCH_KM + 1
-    best = None
+    ilat, ilon = int(g_lat), int(g_lon)
+    best_dist = MAX_SAME_PLACE_KM + 1
+    best_cid  = None
 
     for dlat in (-1, 0, 1):
         for dlon in (-1, 0, 1):
-            for g_lat, g_lon, pop, dem in cc_idx.get((ilat + dlat, ilon + dlon), ()):
-                d = haversine(lat, lon, g_lat, g_lon)
+            for lat, lon, cid in cc_idx.get((ilat + dlat, ilon + dlon), ()):
+                d = haversine(g_lat, g_lon, lat, lon)
                 if d < best_dist:
                     best_dist = d
-                    best = (pop, dem, d)
+                    best_cid  = cid
 
-    if best is None:
-        return None
-
-    pop, dem, dist = best
-
-    # Oltre MAX_SAME_PLACE_KM il punto GeoNames non coincide con la nostra
-    # entry: azzeriamo i valori derivati da quel punto specifico.
-    is_same_place = dist <= MAX_SAME_PLACE_KM
-
-    if not is_same_place:
-        pop = None
-        dem = None
-
-    return pop, dem, is_same_place
+    return (best_cid, best_dist) if best_cid is not None else None
 
 
 # ── DB helpers ────────────────────────────────────────────────────
@@ -189,87 +146,145 @@ def _fmt_duration(seconds):
     return f'{s}s'
 
 
+# ── Fase 1: Popolazione + is_populated_place ──────────────────────
 
-def run(db_path, geonames_txt, use_srtm, dry_run):
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+def run_population(conn, geonames_txt, dry_run):
+    """
+    Matching INVERSO: per ogni città in cities500.txt trova l'entry DB
+    più vicina entro MAX_SAME_PLACE_KM. Quella entry e solo quella riceve
+    is_populated_place=1 e la popolazione reale. Tutte le altre vengono
+    resettate a population=NULL, is_populated_place=0.
 
-    ensure_columns(conn)
-
-    geonames = load_geonames(geonames_txt)
-
-    # Carica srtm se disponibile
-    srtm_data = None
-    if use_srtm:
-        try:
-            import srtm
-            srtm_data = srtm.get_data()
-            print('srtm.py pronto (tile scaricati on-demand).')
-        except ImportError:
-            print('ATTENZIONE: srtm.py non installato — altitudine da dem GeoNames.')
-            print('  Installa con: pip install srtm.py')
+    In questo modo musei, fiumi e qualsiasi POI vicino a una città reale
+    non ereditano mai la popolazione della città.
+    """
+    t0 = time.time()
 
     rows = conn.execute(
         'SELECT cityid, latitude, longitude, countrycode FROM cities '
         'WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
     ).fetchall()
+    total_db = len(rows)
+    print(f'Entry DB con coordinate: {total_db:,}')
 
-    total = len(rows)
-    print(f'\nCittà con coordinate: {total:,}')
+    print('Costruzione indice spaziale DB …')
+    db_index = build_db_index(rows)
+
+    # city_matches: cityid → (population, dist_km)
+    # Se più città GeoNames puntano alla stessa entry DB, vince la più vicina.
+    city_matches = {}
+    n_geonames   = 0
+
+    print(f'Matching GeoNames → DB (soglia {MAX_SAME_PLACE_KM} km) …')
+    with open(geonames_txt, encoding='utf-8') as f:
+        for line in f:
+            fields = line.rstrip('\n').split('\t')
+            if len(fields) < 17 or fields[6] != 'P':
+                continue
+            try:
+                g_lat = float(fields[4])
+                g_lon = float(fields[5])
+                g_pop = int(fields[14]) if fields[14] else 0
+                g_cc  = fields[8].upper()
+            except (ValueError, IndexError):
+                continue
+
+            n_geonames += 1
+            result = find_db_entry(db_index, g_lat, g_lon, g_cc)
+            if result:
+                cid, dist = result
+                if cid not in city_matches or dist < city_matches[cid][1]:
+                    city_matches[cid] = (g_pop, dist)
+
+    n_cities   = len(city_matches)
+    n_with_pop = sum(1 for pop, _ in city_matches.values() if pop and pop > 0)
+    print(f'  {n_geonames:,} città GeoNames elaborate')
+    print(f'  {n_cities:,} entry DB identificate come centri abitati')
+    print(f'  {n_with_pop:,} con popolazione > 0')
+
     if dry_run:
-        print('[dry-run] Nessuna scrittura nel DB.\n')
+        print('[dry-run] Nessuna scrittura.\n')
+        return
 
-    matched_pop  = 0
-    matched_elev = 0
-    updates      = []
-    t0 = time.time()
+    # Reset globale: tutti i record tornano a POI
+    print('Reset population e is_populated_place …')
+    conn.execute('UPDATE cities SET population = NULL, is_populated_place = 0')
+    conn.commit()
+
+    # Scrittura dei centri abitati identificati
+    print('Scrittura centri abitati …')
+    batch = []
+    for cid, (pop, _) in city_matches.items():
+        batch.append((pop if pop and pop > 0 else None, cid))
+        if len(batch) >= BATCH_SIZE:
+            conn.executemany(
+                'UPDATE cities SET population = ?, is_populated_place = 1 WHERE cityid = ?',
+                batch
+            )
+            conn.commit()
+            batch = []
+    if batch:
+        conn.executemany(
+            'UPDATE cities SET population = ?, is_populated_place = 1 WHERE cityid = ?',
+            batch
+        )
+        conn.commit()
+
+    elapsed = time.time() - t0
+    print(f'Popolazione completata in {_fmt_duration(elapsed)}')
+    print(f'  Centri abitati : {n_cities:,} / {total_db:,} ({n_cities/total_db*100:.1f}%)')
+    print(f'  Con popolazione: {n_with_pop:,} / {n_cities:,} ({n_with_pop/n_cities*100:.1f}% dei centri abitati)')
+
+
+# ── Fase 2: Altitudine SRTM ───────────────────────────────────────
+
+def run_elevation(conn, dry_run):
+    """
+    Calcola l'altitudine per ogni entry con coordinate usando SRTM
+    (tile NASA, ~90 m risoluzione). Valido per qualsiasi feature geografica:
+    città, fiumi, laghi, cime, musei, ecc. — usa le coordinate esatte.
+    """
+    try:
+        import srtm
+    except ImportError:
+        print('ATTENZIONE: srtm.py non installato — altitudine saltata.')
+        print('  Installa con: pip install srtm.py')
+        return
+
+    srtm_data = srtm.get_data()
+    print('srtm.py pronto.')
+
+    rows = conn.execute(
+        'SELECT cityid, latitude, longitude FROM cities '
+        'WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
+    ).fetchall()
+    total = len(rows)
+    print(f'Calcolo altitudine per {total:,} entry …')
+
+    t0      = time.time()
+    found   = 0
+    updates = []
 
     for i, row in enumerate(rows, 1):
-        cid = row['cityid']
-        lat = row['latitude']
-        lon = row['longitude']
-        cc  = (row['countrycode'] or '').upper()
-
-        pop             = None
-        elev            = None
-        is_pop_place    = 0
-
-        # 1. GeoNames → popolazione + dem come fallback altitudine
-        match = find_match(geonames, lat, lon, cc)
-        if match:
-            g_pop, g_dem, is_same_place = match
-            if is_same_place:
-                is_pop_place = 1
-                if g_pop and g_pop > 0:
-                    pop = g_pop
-                    matched_pop += 1
-            elev = g_dem  # fallback, può rimanere None
-
-        # 2. srtm.py → altitudine precisa sulle coordinate esatte (sovrascrive dem GeoNames).
-        # Valida per qualsiasi feature geografica (città, fiume, cima, ecc.).
-        if srtm_data:
-            s = srtm_data.get_elevation(lat, lon)
-            if s is not None:
-                elev = s
-                matched_elev += 1
-
-        updates.append((pop, elev, is_pop_place, cid))
+        elev = srtm_data.get_elevation(row['latitude'], row['longitude'])
+        if elev is not None:
+            found += 1
+        updates.append((elev, row['cityid']))
 
         if i % BATCH_SIZE == 0 or i == total:
             if not dry_run:
                 conn.executemany(
-                    'UPDATE cities SET population=?, elevation_m=?, is_populated_place=? WHERE cityid=?',
+                    'UPDATE cities SET elevation_m = ? WHERE cityid = ?',
                     updates
                 )
                 conn.commit()
             updates = []
             elapsed = time.time() - t0
-            speed = i / elapsed if elapsed > 0 else 0
-            eta   = (total - i) / speed if speed > 0 else 0
+            speed   = i / elapsed if elapsed > 0 else 0
+            eta     = (total - i) / speed if speed > 0 else 0
             print(
-                f'  {i:>8,}/{total:,}  '
-                f'pop:{matched_pop:,}  elev:{matched_elev:,}  '
-                f'{speed:.0f} città/s  '
+                f'  {i:>8,}/{total:,}  trovate:{found:,}  '
+                f'{speed:.0f} entry/s  '
                 f'trascorso {_fmt_duration(elapsed)}  '
                 f'ETA {_fmt_duration(eta)}',
                 end='\r'
@@ -277,28 +292,41 @@ def run(db_path, geonames_txt, use_srtm, dry_run):
 
     print()
     elapsed = time.time() - t0
-    print(f'\nCompletato in {_fmt_duration(elapsed)}')
-    print(f'  Popolazione trovata : {matched_pop:,} / {total:,} '
-          f'({matched_pop/total*100:.1f}%)')
-    print(f'  Altitudine trovata  : {matched_elev:,} / {total:,} '
-          f'({matched_elev/total*100:.1f}%)')
-
-    conn.close()
+    print(f'Altitudine completata in {_fmt_duration(elapsed)}')
+    print(f'  Altitudine trovata: {found:,} / {total:,} ({found/total*100:.1f}%)')
 
 
 # ── Entry point ───────────────────────────────────────────────────
 
+def run(db_path, geonames_txt, use_srtm, dry_run):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    ensure_columns(conn)
+
+    print('\n=== FASE 1: Popolazione ===')
+    run_population(conn, geonames_txt, dry_run)
+
+    if use_srtm:
+        print('\n=== FASE 2: Altitudine SRTM ===')
+        run_elevation(conn, dry_run)
+    else:
+        print('\n[--no-srtm] Altitudine esistente lasciata invariata.')
+
+    conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Arricchisce cities.db con popolazione (GeoNames) e altitudine (srtm.py).'
+        description='Arricchisce cities.db con popolazione (GeoNames) e altitudine (SRTM).'
     )
     parser.add_argument('--db',       default='cities.db',  help='Path al DB SQLite')
     parser.add_argument('--geonames', default=GEONAMES_TXT, help='Path a cities500.txt')
-    parser.add_argument('--no-srtm',  action='store_true',  help='Usa solo dem GeoNames')
+    parser.add_argument('--no-srtm',  action='store_true',
+                        help='Salta SRTM: ricalcola solo popolazione/flag, '
+                             'elevation_m rimane invariata')
     parser.add_argument('--dry-run',  action='store_true',  help='Non scrive nel DB')
     args = parser.parse_args()
 
-    # Scarica e/o estrae GeoNames se assente
     if not os.path.exists(args.geonames):
         zip_path = os.path.splitext(args.geonames)[0] + '.zip'
         if not os.path.exists(zip_path):
