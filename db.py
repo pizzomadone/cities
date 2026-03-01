@@ -3,6 +3,11 @@ import os
 
 DB_PATH = os.environ.get('CITIES_DB', 'cities.db')
 
+# Condizione riutilizzabile: solo centri abitati riconosciuti da GeoNames.
+# I punti di interesse (musei, fiumi, cime, ecc.) hanno is_populated_place=0
+# e compaiono solo nella loro pagina diretta, non in elenchi o statistiche.
+_IS_CITY = 'is_populated_place = 1'
+
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
@@ -14,12 +19,13 @@ def get_conn():
 
 def get_continents():
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT continent,
                    COUNT(*)                  AS city_count,
                    COUNT(DISTINCT countrycode) AS country_count
             FROM   cities
             WHERE  continent != '' AND cityname != ''
+              AND  {_IS_CITY}
             GROUP  BY continent
             ORDER  BY continent
         ''').fetchall()
@@ -29,12 +35,13 @@ def get_continents():
 
 def get_countries_by_continent(continent):
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT countryname, countrycode, slug_country, continent,
                    COUNT(*)                  AS city_count,
                    COUNT(DISTINCT regionid)  AS region_count
             FROM   cities
             WHERE  continent = ? AND cityname != ''
+              AND  {_IS_CITY}
             GROUP  BY countrycode
             ORDER  BY countryname
         ''', (continent,)).fetchall()
@@ -52,10 +59,10 @@ def get_country(country_slug):
 
 def get_all_countries():
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT DISTINCT countryname, countrycode, slug_country, continent
             FROM   cities
-            WHERE  countryname != ''
+            WHERE  countryname != '' AND {_IS_CITY}
             ORDER  BY countryname
         ''').fetchall()
 
@@ -64,11 +71,12 @@ def get_all_countries():
 
 def get_regions_by_country(country_slug):
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT stateprovince, slug_region,
                    COUNT(*) AS city_count
             FROM   cities
             WHERE  slug_country = ? AND stateprovince != '' AND cityname != ''
+              AND  {_IS_CITY}
             GROUP  BY slug_region
             ORDER  BY stateprovince
         ''', (country_slug,)).fetchall()
@@ -89,24 +97,28 @@ def get_region(country_slug, region_slug):
 def get_cities_by_region(country_slug, region_slug, page=1, per_page=50):
     offset = (page - 1) * per_page
     with get_conn() as conn:
-        cities = conn.execute('''
+        cities = conn.execute(f'''
             SELECT cityid, cityname, slug_city, latitude, longitude
             FROM   cities
             WHERE  slug_country = ? AND slug_region = ? AND cityname != ''
+              AND  {_IS_CITY}
             ORDER  BY cityname
             LIMIT  ? OFFSET ?
         ''', (country_slug, region_slug, per_page, offset)).fetchall()
 
-        total = conn.execute('''
+        total = conn.execute(f'''
             SELECT COUNT(*)
             FROM   cities
             WHERE  slug_country = ? AND slug_region = ? AND cityname != ''
+              AND  {_IS_CITY}
         ''', (country_slug, region_slug)).fetchone()[0]
 
     return cities, total
 
 
 def get_city(country_slug, region_slug, city_slug):
+    # Nessun filtro is_populated_place: la pagina di un POI rimane
+    # accessibile (mostra quota ma non popolazione).
     with get_conn() as conn:
         return conn.execute('''
             SELECT cityid, cityname, stateprovince, countryname, countrycode,
@@ -122,7 +134,7 @@ def get_city(country_slug, region_slug, city_slug):
 def get_nearby_cities(lat, lon, current_cityid, limit=12, radius_deg=2.0):
     """Città vicine usando bounding box + distanza euclidea approssimata."""
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT cityid, cityname, stateprovince, countryname,
                    slug_city, slug_country, slug_region,
                    latitude, longitude,
@@ -135,6 +147,7 @@ def get_nearby_cities(lat, lon, current_cityid, limit=12, radius_deg=2.0):
               AND  latitude  IS NOT NULL
               AND  longitude IS NOT NULL
               AND  cityid    != ?
+              AND  {_IS_CITY}
             ORDER  BY dist_sq
             LIMIT  ?
         ''', (
@@ -153,28 +166,30 @@ SITEMAP_CHUNK = 50_000
 
 def get_cities_for_sitemap(offset, limit=SITEMAP_CHUNK):
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT slug_city, slug_country, slug_region
             FROM   cities
             WHERE  cityname != '' AND slug_city != ''
               AND  slug_country != '' AND slug_region != ''
+              AND  {_IS_CITY}
             LIMIT  ? OFFSET ?
         ''', (limit, offset)).fetchall()
 
 
 def get_total_cities_with_slug():
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT COUNT(*) FROM cities
             WHERE cityname != '' AND slug_city != ''
               AND slug_country != '' AND slug_region != ''
+              AND {_IS_CITY}
         ''').fetchone()[0]
 
 
 def get_city_count():
     with get_conn() as conn:
         return conn.execute(
-            "SELECT COUNT(*) FROM cities WHERE cityname != ''"
+            f"SELECT COUNT(*) FROM cities WHERE cityname != '' AND {_IS_CITY}"
         ).fetchone()[0]
 
 
@@ -182,7 +197,7 @@ def get_region_city_count(country_slug, region_slug):
     """Numero di città in una regione specifica."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT COUNT(*) FROM cities WHERE slug_country = ? AND slug_region = ? AND cityname != ''",
+            f"SELECT COUNT(*) FROM cities WHERE slug_country = ? AND slug_region = ? AND cityname != '' AND {_IS_CITY}",
             (country_slug, region_slug)
         ).fetchone()[0]
 
@@ -191,7 +206,7 @@ def get_country_city_count(country_slug):
     """Numero totale di città in un paese."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT COUNT(*) FROM cities WHERE slug_country = ? AND cityname != ''",
+            f"SELECT COUNT(*) FROM cities WHERE slug_country = ? AND cityname != '' AND {_IS_CITY}",
             (country_slug,)
         ).fetchone()[0]
 
@@ -199,12 +214,13 @@ def get_country_city_count(country_slug):
 def search_cities(query, limit=30):
     """Ricerca città per nome (parziale, case-insensitive)."""
     with get_conn() as conn:
-        return conn.execute('''
+        return conn.execute(f'''
             SELECT cityname, stateprovince, countryname, countrycode,
                    slug_city, slug_country, slug_region
             FROM   cities
             WHERE  cityname LIKE ? AND cityname != ''
               AND  slug_city != '' AND slug_country != '' AND slug_region != ''
+              AND  {_IS_CITY}
             ORDER  BY cityname
             LIMIT  ?
         ''', (f'%{query}%', limit)).fetchall()
